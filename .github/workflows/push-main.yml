@@ -1,4 +1,4 @@
-name: 2. Create & Publish Test Message Sink Docker image
+name: 2. Create & Publish JMeter Runner Docker image
 
 on:
   push:
