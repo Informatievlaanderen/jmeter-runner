@@ -20,13 +20,11 @@ WORKDIR /usr/vsds/jmeter-runner
 COPY --chown=node:node --from=builder /build/package*.json ./
 COPY --chown=node:node --from=builder /build/dist/*.js ./
 # env vars
-ARG BASE_URL
-ENV BASE_URL=${BASE_URL}
-ENV TEST_FOLDER_BASE=${TEST_FOLDER_BASE}
-ARG TEST_FOLDER_BASE
-ENV TEST_FOLDER_BASE=${TEST_FOLDER_BASE}
+ENV BASE_URL=
+ENV TEST_FOLDER_BASE=
 ENV SILENT=
 ENV MAX_RUNNING=
+ENV REFRESH_TIME=
 ENV RUN_TEST_API_KEY=
 ENV CHECK_TEST_API_KEY=
 ENV DELETE_TEST_API_KEY=
@@ -51,4 +49,4 @@ ENV JMETER_HOME=/usr/vsds/jmeter-runner/apache-jmeter
 ENV PATH=${JMETER_HOME}/bin:$PATH
 # run as node
 USER node
-CMD ["sh", "-c", "node ./server.js --host=0.0.0.0 --port=80 --base-url=${BASE_URL} --test-folder-base=${TEST_FOLDER_BASE} --silent=${SILENT} --max-running=${MAX_RUNNING} --run-test-api-key=${RUN_TEST_API_KEY} --check-test-api-key=${CHECK_TEST_API_KEY} --delete-test-api-key=${DELETE_TEST_API_KEY}"]
+CMD ["sh", "-c", "node ./server.js --host=0.0.0.0 --port=80 --base-url=${BASE_URL} --test-folder-base=${TEST_FOLDER_BASE} --silent=${SILENT} --max-running=${MAX_RUNNING} --refresh-time=${REFRESH_TIME} --run-test-api-key=${RUN_TEST_API_KEY} --check-test-api-key=${CHECK_TEST_API_KEY} --delete-test-api-key=${DELETE_TEST_API_KEY}"]
