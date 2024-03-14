@@ -12,9 +12,9 @@ docker build --tag vsds/jmeter-runner .
 ```
 > **Note** that we also have pre-built docker images available [here](https://github.com/Informatievlaanderen/jmeter-runner/pkgs/container/jmeter-runner).
 
-To run the jmeter runner Docker image mapped on port 9009 using a MongoDB, you can use:
+To run the jmeter runner Docker image mapped on port 9000 and storing the test data on the host system, you can use:
 ```bash
-docker run -d -p 9009:80 -v ./tests:/tmp/tests:rw -e BASE_URL=http://localhost:9009 vsds/jmeter-runner
+docker run -d -p 9000:80 -v ./tests:/home/node/jmeter-runner/tests:rw -e BASE_URL=http://localhost:9000 vsds/jmeter-runner
 ```
 
 The Docker run command will return a container ID (e.g. `e2267325aad52663fef226aad49e729acc92f2f3936bec47a354d015e47c33d6`), which you need to stop the container.
@@ -22,7 +22,7 @@ The Docker run command will return a container ID (e.g. `e2267325aad52663fef226a
 Alternatively you can run `docker ps` to retrieve the (short version of the) container ID.
 ```
 CONTAINER ID   IMAGE                COMMAND                  CREATED          STATUS          PORTS                                   NAMES
-e2267325aad5   vsds/jmeter-runner   "/usr/bin/dumb-init …"   28 seconds ago   Up 27 seconds   0.0.0.0:9009->80/tcp, :::9009->80/tcp   brave_saha
+e2267325aad5   vsds/jmeter-runner   "/usr/bin/dumb-init …"   28 seconds ago   Up 27 seconds   0.0.0.0:9000->80/tcp, :::9000->80/tcp   brave_saha
 ```
 To stop the container, you need to call the stop command with the (long or short) container ID, e.g. `docker stop e2267325aad5`
 

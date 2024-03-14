@@ -16,7 +16,7 @@ FROM node:20.11.0-bullseye-slim
 RUN apt-get -y update && apt-get -y upgrade
 RUN apt-get -y install apt-utils wget
 # setup to run as less-privileged user
-WORKDIR /usr/vsds/jmeter-runner
+WORKDIR /home/node/jmeter-runner
 COPY --chown=node:node --from=builder /build/package*.json ./
 COPY --chown=node:node --from=builder /build/dist/*.js ./
 # env vars
@@ -45,7 +45,7 @@ ARG JMETER_TAG=5.6.3
 RUN wget https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-${JMETER_TAG}.tgz
 RUN tar -xvzf apache-jmeter-${JMETER_TAG}.tgz
 RUN mv apache-jmeter-${JMETER_TAG} apache-jmeter
-ENV JMETER_HOME=/usr/vsds/jmeter-runner/apache-jmeter
+ENV JMETER_HOME=/home/node/jmeter-runner/apache-jmeter
 ENV PATH=${JMETER_HOME}/bin:$PATH
 # run as node
 USER node

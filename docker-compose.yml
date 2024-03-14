@@ -11,15 +11,15 @@ services:
     networks:
       - performance_testing 
     volumes:
-      - ${TEST_FOLDER}:/tmp/tests:rw
+      - ${TEST_FOLDER}:/home/node/jmeter-runner/tests:rw
     ports:
-      - 9009:80
+      - 9000:80
     environment:
+      # - TEST_FOLDER_BASE=/home/node/jmeter-runner/tests
       - BASE_URL=${BASE_URL}
-      # - TEST_FOLDER_BASE=/tmp/tests
-      # - SILENT=${SILENT:-false}
-      # - MAX_RUNNING=${MAX_RUNNING:-1}
-      # - REFRESH_TIME=${REFRESH_TIME:-30}
-      # - RUN_TEST_API_KEY=${RUN_TEST_API_KEY:-}
-      # - CHECK_TEST_API_KEY=${CHECK_TEST_API_KEY:-}
-      # - DELETE_TEST_API_KEY=${DELETE_TEST_API_KEY:-}
+      - SILENT=${SILENT:-false}
+      - MAX_RUNNING=${MAX_RUNNING:-1}
+      - REFRESH_TIME=${REFRESH_TIME:-30}
+      - RUN_TEST_API_KEY=${RUN_TEST_API_KEY:-}
+      - CHECK_TEST_API_KEY=${CHECK_TEST_API_KEY:-}
+      - DELETE_TEST_API_KEY=${DELETE_TEST_API_KEY:-}
