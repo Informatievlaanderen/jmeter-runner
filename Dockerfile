@@ -39,15 +39,18 @@ RUN npm install -g npm@${NPM_TAG}
 # install dependancies
 ENV NODE_ENV production
 RUN npm ci --omit=dev
-#install java
+# install java
 RUN apt-get -y install openjdk-11-jdk-headless
-#install jmeter
+# install jmeter
 ARG JMETER_TAG=5.6.3
 RUN wget https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-${JMETER_TAG}.tgz
 RUN tar -xvzf apache-jmeter-${JMETER_TAG}.tgz
 RUN mv apache-jmeter-${JMETER_TAG} apache-jmeter
 ENV JMETER_HOME=/home/node/jmeter-runner/apache-jmeter
 ENV PATH=${JMETER_HOME}/bin:$PATH
+# create default tests folder
+RUN mkdir ./tests
+RUN chown node ./tests
 # run as node
 USER node
 CMD ["sh", "-c", "node ./server.js --host=0.0.0.0 --port=${PORT} --base-url=${BASE_URL} --test-folder-base=${TEST_FOLDER_BASE} --silent=${SILENT} --max-running=${MAX_RUNNING} --refresh-time=${REFRESH_TIME} --run-test-api-key=${RUN_TEST_API_KEY} --check-test-api-key=${CHECK_TEST_API_KEY} --delete-test-api-key=${DELETE_TEST_API_KEY}"]
