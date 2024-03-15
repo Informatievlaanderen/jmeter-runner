@@ -15,11 +15,17 @@ FROM node:20.11.0-bullseye-slim
 # note: trivy insists this to be on the same RUN line
 RUN apt-get -y update && apt-get -y upgrade
 RUN apt-get -y install apt-utils wget
-# setup to run as less-privileged user
-WORKDIR /home/node/jmeter-runner
-COPY --chown=node:node --from=builder /build/package*.json ./
-COPY --chown=node:node --from=builder /build/dist/*.js ./
-# env vars
+# install signal-handler wrapper
+RUN apt-get -y install dumb-init
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+# install package manager
+RUN npm install -g npm@${NPM_TAG}
+# install jmeter-runner
+WORKDIR /home/node
+RUN mkdir -p jmeter-runner/tests
+COPY --chown=node:node --from=builder /build/package*.json jmeter-runner/
+COPY --chown=node:node --from=builder /build/dist/*.js jmeter-runner/
+RUN cd ./jmeter-runner && npm ci --omit=dev
 ENV BASE_URL=
 ENV PORT=
 ENV TEST_FOLDER_BASE=
@@ -29,28 +35,32 @@ ENV REFRESH_TIME=
 ENV RUN_TEST_API_KEY=
 ENV CHECK_TEST_API_KEY=
 ENV DELETE_TEST_API_KEY=
-# install signal-handler wrapper
-RUN apt-get -y install dumb-init
-# set start command
-EXPOSE 80
-ENTRYPOINT ["/usr/bin/dumb-init", "--"]
-# fix vulnerabilities
-RUN npm install -g npm@${NPM_TAG}
-# install dependancies
 ENV NODE_ENV production
-RUN npm ci --omit=dev
-# install java
-RUN apt-get -y install openjdk-11-jdk-headless
-# install jmeter
+EXPOSE 80
+# install java runtime
+ARG JAVA_TAG=17
+RUN apt-get -y install openjdk-${JAVA_TAG}-jre && apt-get clean
+# install Apache jmeter
 ARG JMETER_TAG=5.6.3
 RUN wget https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-${JMETER_TAG}.tgz
-RUN tar -xvzf apache-jmeter-${JMETER_TAG}.tgz
-RUN mv apache-jmeter-${JMETER_TAG} apache-jmeter
-ENV JMETER_HOME=/home/node/jmeter-runner/apache-jmeter
+RUN tar -xvzf apache-jmeter-${JMETER_TAG}.tgz && rm apache-jmeter-${JMETER_TAG}.tgz
+RUN ln -s apache-jmeter-${JMETER_TAG} apache-jmeter
+ENV JMETER_HOME=/home/node/apache-jmeter
 ENV PATH=${JMETER_HOME}/bin:$PATH
-# create default tests folder
-RUN mkdir ./tests
-RUN chown node ./tests
+# update mongo drivers
+ARG MONGO_JAR_TAG=3.12.14
+RUN rm apache-jmeter/lib/mongo-java-driver-2*
+RUN wget https://repo1.maven.org/maven2/org/mongodb/mongo-java-driver/3.12.14/mongo-java-driver-${MONGO_JAR_TAG}.jar
+RUN mv mongo-java-driver-${MONGO_JAR_TAG}.jar apache-jmeter/lib/
+# install Apache Jena
+ARG JENA_TAG=5.0.0-rc1
+RUN wget https://dlcdn.apache.org/jena/binaries/apache-jena-${JENA_TAG}.tar.gz 
+RUN tar -xf apache-jena-${JENA_TAG}.tar.gz && rm apache-jena-${JENA_TAG}.tar.gz
+RUN ln -s apache-jena-${JENA_TAG} apache-jena
+ENV JENA_HOME=/home/node/apache-jena
+ENV PATH=${JENA_HOME}/bin:$PATH
 # run as node
+RUN chown node:node -R /home/node/*
+WORKDIR /home/node/jmeter-runner
 USER node
 CMD ["sh", "-c", "node ./server.js --host=0.0.0.0 --port=${PORT} --base-url=${BASE_URL} --test-folder-base=${TEST_FOLDER_BASE} --silent=${SILENT} --max-running=${MAX_RUNNING} --refresh-time=${REFRESH_TIME} --run-test-api-key=${RUN_TEST_API_KEY} --check-test-api-key=${CHECK_TEST_API_KEY} --delete-test-api-key=${DELETE_TEST_API_KEY}"]
