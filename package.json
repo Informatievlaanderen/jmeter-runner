@@ -23,6 +23,7 @@
     "lodash": "^4.17.21",
     "minimist": "^1.2.8",
     "mustache": "^4.2.0",
+    "read-last-lines": "^1.8.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

@@ -110,6 +110,14 @@ Returns a HTML page (auto-refreshed) with the status for the test run with the g
 ```bash
 curl http://localhost:9000/c47a3487-2f9f-433c-ab5a-82b196fff7e1
 ```
+> **Note** that the jmeter runner only displays the last 1000 lines by default. If you need to see more or less lines you can specify a `limit` as a query parameter. E.g.:
+```bash
+curl http://localhost:9000/c47a3487-2f9f-433c-ab5a-82b196fff7e1?limit=100
+```
+or if you want to display everything, you need to add a zero limit:
+```bash
+curl http://localhost:9000/c47a3487-2f9f-433c-ab5a-82b196fff7e1?limit=0
+```
 
 ### `GET /<test-run-id>/results` -- Get Test Run Results
 Returns a HTML page with the results for the test run with the given ID.

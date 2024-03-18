@@ -97,14 +97,15 @@ server.get('/', async (request, reply) => {
   reply.header('content-type', 'text/html').send(body);
 });
 
-server.get('/:id', async (request, reply) => {
+server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyCheckTest)) {
     return reply.status(401).send('');
   }
 
+  const parameters = request.query as { limit?: number };
   const { id } = request.params as { id: string };
   if(controller.testRunExists(id)) {
-    const body = controller.getTestRunStatus(id);
+    const body = await controller.getTestRunStatus(id, parameters.limit);
     reply.header('content-type', 'text/html').send(body);
   } else {
     reply.status(404).send('');

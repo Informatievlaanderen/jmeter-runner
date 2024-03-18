@@ -6,6 +6,7 @@ import _ from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
 import * as cp from 'node:child_process';
 import { XMLParser } from "fast-xml-parser";
+import { read } from 'read-last-lines';
 
 import { JMeterTest, TestRun, TestRunDatabase, TestRunStatus } from "./interfaces";
 
@@ -124,14 +125,17 @@ export class Controller {
     return this._testRuns.map(x => this._purgeTestRun(x));
   }
 
-  public getTestRunStatus(id: string) {
+  public async getTestRunStatus(id: string, limit: number = 1000) {
     const run = this._getTestRun(id);
     if (!run) throw new Error(`Test ${id} does not exist.`);
   
+    const output = limit ?
+      await read(run.stdout, limit) :
+      fs.readFileSync(run.stdout).toString();
     const data = {
       ... run,
       refresh: run.status === TestRunStatus.running ? this._refreshTimeInSeconds : false,
-      output: fs.readFileSync(run.stdout).toString(),
+      output: output,
     };
     return Mustache.render(statusTemplate, data);
   }
