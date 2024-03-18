@@ -47,18 +47,6 @@ RUN tar -xvzf apache-jmeter-${JMETER_TAG}.tgz && rm apache-jmeter-${JMETER_TAG}.
 RUN ln -s apache-jmeter-${JMETER_TAG} apache-jmeter
 ENV JMETER_HOME=/home/node/apache-jmeter
 ENV PATH=${JMETER_HOME}/bin:$PATH
-# update mongo drivers
-ARG MONGO_JAR_TAG=3.12.14
-RUN rm apache-jmeter/lib/mongo-java-driver-2*
-RUN wget https://repo1.maven.org/maven2/org/mongodb/mongo-java-driver/3.12.14/mongo-java-driver-${MONGO_JAR_TAG}.jar
-RUN mv mongo-java-driver-${MONGO_JAR_TAG}.jar apache-jmeter/lib/
-# install Apache Jena
-ARG JENA_TAG=5.0.0-rc1
-RUN wget https://dlcdn.apache.org/jena/binaries/apache-jena-${JENA_TAG}.tar.gz 
-RUN tar -xf apache-jena-${JENA_TAG}.tar.gz && rm apache-jena-${JENA_TAG}.tar.gz
-RUN ln -s apache-jena-${JENA_TAG} apache-jena
-ENV JENA_HOME=/home/node/apache-jena
-ENV PATH=${JENA_HOME}/bin:$PATH
 # run as node
 RUN chown node:node -R /home/node/*
 WORKDIR /home/node/jmeter-runner
