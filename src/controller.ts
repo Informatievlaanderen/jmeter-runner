@@ -14,7 +14,6 @@ export const metadataName = 'metadata.json';
 const testName = 'test.jmx';
 const reportName = 'report.jtl';
 const resultsFolder = 'results';
-const stdoutName = 'output.txt';
 
 const statusTemplate = '<!DOCTYPE html><html>\
   <head><title>Test Run {{id}}</title>{{#refresh}}<meta http-equiv="refresh" content="{{.}}">{{/refresh}}</head>\
@@ -84,6 +83,8 @@ export class Controller {
 
     const folder = path.join(this._baseFolder, id);
     fs.rmSync(folder, { recursive: true, force: true });
+    const logs = path.join(this._logFolder, `${id}.log`);
+    fs.rmSync(logs);
     this._deleteTestRun(run);
     return '';
   }
@@ -96,11 +97,11 @@ export class Controller {
     fs.writeFileSync(fullPathName, data, { encoding: 'utf8', flush: true });
   }
 
-  private _append(fullPathName: string, data: any) {
-    fs.appendFileSync(fullPathName, data);
-  }
-
-  constructor(private _baseFolder: string, private _baseUrl: string, private _refreshTimeInSeconds: number) { }
+  constructor(
+    private _baseFolder: string, 
+    private _baseUrl: string, 
+    private _refreshTimeInSeconds: number, 
+    private _logFolder: string) { }
 
   public get runningCount(): number {
     return Object.values(this._testRunsById).filter(x => x.status == TestRunStatus.running).length;
@@ -147,7 +148,7 @@ export class Controller {
     const run = this._getTestRun(id);
     if (!run) throw new Error(`Test ${id} does not exist.`);
 
-    const logs = path.join(this._baseFolder, id, stdoutName);
+    const logs = path.join(this._logFolder, `${id}.log`);
     const output = limit ? await read(logs, limit) : this._read(logs);
     const data = {
       ...run,
@@ -222,9 +223,8 @@ export class Controller {
       }
     });
 
-    // jmeter.stdout.pipe(fs.createWriteStream(stdout, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
-    const logs = path.join(folder, stdoutName);
-    jmeter.stdout.on('data', (data: any) => this._append(logs, data));
+    const logs = path.join(this._logFolder, `${id}.log`);
+    jmeter.stdout.pipe(fs.createWriteStream(logs, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
 
     const statusUrl = `${this._baseUrl}/${id}`;
     const resultsUrl = `${statusUrl}/results/`;

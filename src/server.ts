@@ -30,9 +30,16 @@ const baseFolder = fs.realpathSync(testFolderBase);
 if (!fs.existsSync(baseFolder)) {
   fs.mkdirSync(baseFolder);
 }
-console.info("Storing test data in: ", baseFolder);
+console.info("Storing data in: ", baseFolder);
 
-const controller = new Controller(baseFolder, baseUrl, refreshTimeInSeconds);
+let logFolder = './logs';
+if (!fs.existsSync(logFolder)) {
+  fs.mkdirSync(logFolder);
+}
+logFolder = fs.realpathSync(logFolder);
+console.info("Storing logs in: ", logFolder);
+
+const controller = new Controller(baseFolder, baseUrl, refreshTimeInSeconds, logFolder);
 
 function checkApiKey(request: any, apiKey: string): boolean {
   return !apiKey || request.headers['x-api-key'] === apiKey;
