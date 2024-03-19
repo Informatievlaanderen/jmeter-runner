@@ -73,7 +73,7 @@ export class Controller {
 
   private _writeMetadata(run: TestRun) {
     const metadata = path.join(this._baseFolder, run.id, metadataName);
-    fs.writeFileSync(metadata, JSON.stringify(run), { encoding: 'utf8', flag: 'w' });
+    fs.writeFileSync(metadata, JSON.stringify(run), { encoding: 'utf8', flag: 'w', flush: true });
   }
   
   private _purgeTestRun(run: TestRun) {
@@ -99,7 +99,8 @@ export class Controller {
     folders.forEach(id => {
       const metadata = path.join(this._baseFolder, id, metadataName);
       if (fs.existsSync(metadata)) {
-        const run = JSON.parse(fs.readFileSync(metadata).toString());
+        const content = fs.readFileSync(metadata, {encoding: 'utf8', flag: 'r'});
+        const run = JSON.parse(content);
         this._upsertTestRun(run);
       }
     })
@@ -129,9 +130,10 @@ export class Controller {
     const run = this._getTestRun(id);
     if (!run) throw new Error(`Test ${id} does not exist.`);
   
-    const output = limit ?
-      await read(run.stdout, limit) :
-      fs.readFileSync(run.stdout).toString();
+    const output = limit 
+      ? await read(run.stdout, limit) 
+      : fs.readFileSync(run.stdout, {encoding: 'utf8', flag: 'r'});
+
     const data = {
       ... run,
       refresh: run.status === TestRunStatus.running ? this._refreshTimeInSeconds : false,
@@ -203,7 +205,7 @@ export class Controller {
       this._writeMetadata(this._upsertTestRun({ ...run, status: TestRunStatus.done, code: code }));
     });
 
-    jmeter.stdout.pipe(fs.createWriteStream(stdout, { flush: true, emitClose: false }));
+    jmeter.stdout.pipe(fs.createWriteStream(stdout, { encoding: 'utf8', flags: 'w', flush: true, autoClose: true, emitClose: false }));
 
     const statusUrl = `${this._baseUrl}/${id}`;
     const resultsUrl = `${statusUrl}/results/`;
