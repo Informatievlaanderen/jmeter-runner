@@ -72,8 +72,12 @@ export class Controller {
   }  
 
   private _writeMetadata(run: TestRun) {
-    const metadata = path.join(this._baseFolder, run.id, metadataName);
-    fs.writeFileSync(metadata, JSON.stringify(run), { encoding: 'utf8', flag: 'w', flush: true });
+    try {
+      const metadata = path.join(this._baseFolder, run.id, metadataName);
+      fs.writeFileSync(metadata, JSON.stringify(run), { encoding: 'utf8', flag: 'w', flush: true });
+    } catch (error) {
+      console.error('Failed to write metadata because: ', error);
+    }
   }
   
   private _purgeTestRun(run: TestRun) {
