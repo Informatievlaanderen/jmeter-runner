@@ -45,11 +45,19 @@ server.register(fastifyStatic, {
 });
 
 server.addHook('onReady', async () => {
-  await controller.importTestRuns();
+  try {
+    await controller.importTestRuns();
+  } catch (error) {
+    console.error('Failed to import metadata because: ', error);
+  }
 });
 
 server.addHook('onClose', async () => {
-  await controller.exportTestRuns();
+  try {
+    await controller.exportTestRuns();
+  } catch (error) {
+    console.error('Failed to export metadata because: ', error);
+  }
 })
 
 server.addHook('onResponse', (request, reply, done) => {
@@ -66,11 +74,11 @@ server.addContentTypeParser(['application/xml'], { parseAs: 'string' }, function
 })
 
 server.post('/', { schema: { querystring: { category: { type: 'string' } } } }, async (request, reply) => {
-  try {
-    if (!checkApiKey(request, apiKeyRunTest)) {
-      return reply.status(401).send('');
-    }
+  if (!checkApiKey(request, apiKeyRunTest)) {
+    return reply.status(401).send('');
+  }
 
+  try {
     if (controller.runningCount >= maxRunning) {
       return reply.status(503)
         .header('content-type', 'text/plain')
@@ -92,9 +100,13 @@ server.get('/', async (request, reply) => {
   if (!checkApiKey(request, apiKeyCheckTest)) {
     return reply.status(401).send('');
   }
-  
-  const body = controller.getTestRunsOverview();
-  reply.header('content-type', 'text/html').send(body);
+
+  try {
+    const body = controller.getTestRunsOverview();
+    reply.header('content-type', 'text/html').send(body);
+  } catch (error) {
+    reply.send({ msg: 'Cannot display test runs overview', error: error });
+  }
 });
 
 server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, async (request, reply) => {
@@ -104,11 +116,16 @@ server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, a
 
   const parameters = request.query as { limit?: number };
   const { id } = request.params as { id: string };
-  if(controller.testRunExists(id)) {
-    const body = await controller.getTestRunStatus(id, parameters.limit);
-    reply.header('content-type', 'text/html').send(body);
-  } else {
-    reply.status(404).send('');
+
+  try {
+    if (controller.testRunExists(id)) {
+      const body = await controller.getTestRunStatus(id, parameters.limit);
+      reply.header('content-type', 'text/html').send(body);
+    } else {
+      reply.status(404).send('');
+    }
+  } catch (error) {
+    reply.send({ msg: `Cannot display status for test run ${id}`, error: error });
   }
 });
 
@@ -117,12 +134,16 @@ server.delete('/', async (request, reply) => {
     return reply.status(401).send('');
   }
 
-  const responses = controller.deleteAllTestRuns().filter(x => !!x);
-  if (responses.length > 0) {
-    const response = responses.join('\n');
-    reply.status(405).send(response);
-  } else {
-    reply.send('All tests deleted');
+  try {
+    const responses = controller.deleteAllTestRuns().filter(x => !!x);
+    if (responses.length > 0) {
+      const response = responses.join('\n');
+      reply.status(405).send(response);
+    } else {
+      reply.send('All tests deleted');
+    }
+  } catch (error) {
+    reply.send({ msg: 'Cannot delete all tests', error: error });
   }
 });
 
@@ -133,15 +154,19 @@ server.delete('/:id', async (request, reply) => {
 
   const { id } = request.params as { id: string };
 
-  if (controller.testRunExists(id)) {
-    const response = controller.deleteTestRun(id);
-    if (response) {
-      reply.status(405).send(response);
+  try {
+    if (controller.testRunExists(id)) {
+      const response = controller.deleteTestRun(id);
+      if (response) {
+        reply.status(405).send(response);
+      } else {
+        reply.send(`Test ${id} deleted`);
+      }
     } else {
-      reply.send(`Test ${id} deleted`);
+      reply.status(404).send('');
     }
-  } else {
-    reply.status(404).send('');
+  } catch (error) {
+    reply.send({ msg: `Cannot delete test ${id}`, error: error });
   }
 });
 

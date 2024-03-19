@@ -23,7 +23,7 @@ const statusTemplate = '<!DOCTYPE html><html>\
 const noTestsFoundTemplate = '<!DOCTYPE html><html>\
   <head><title>Tests Overview</title><meta http-equiv="refresh" content="{{refresh}}"></head>\
   <body>No tests found.</body></html>';
-  
+
 const overviewTemplate = '<!DOCTYPE html><html>\
   <head><title>Test Runs Overview</title><meta http-equiv="refresh" content="{{refresh}}"></head>\
   <body><h1>Test Runs</h1>\
@@ -39,7 +39,7 @@ const overviewTemplate = '<!DOCTYPE html><html>\
 export class Controller {
 
   private _testRunsById: TestRunDatabase = {};
-  private _testParser = new XMLParser({ stopNodes: ['jmeterTestPlan.hashTree.hashTree'], ignoreAttributes: false, attributeNamePrefix: '_'});
+  private _testParser = new XMLParser({ stopNodes: ['jmeterTestPlan.hashTree.hashTree'], ignoreAttributes: false, attributeNamePrefix: '_' });
 
   private get _testRuns() {
     return Object.values(this._testRunsById);
@@ -69,23 +69,24 @@ export class Controller {
         run.status = TestRunStatus.cancelled;
       }
     });
-  }  
+  }
 
   private _writeMetadata(run: TestRun) {
+    const metadata = path.join(this._baseFolder, run.id, metadataName);
+    const fd = fs.openSync(metadata, 'w');
     try {
-      const metadata = path.join(this._baseFolder, run.id, metadataName);
-      fs.writeFileSync(metadata, JSON.stringify(run), { encoding: 'utf8', flag: 'w', flush: true });
-    } catch (error) {
-      console.error('Failed to write metadata because: ', error);
+      fs.writeFileSync(fd, JSON.stringify(run), { encoding: 'utf8', flush: true });
+    } finally {
+      fs.closeSync(fd);
     }
   }
-  
+
   private _purgeTestRun(run: TestRun) {
     const id = run.id;
     if (run.status === TestRunStatus.running) {
       return `Test ${id} is still running.`
     }
-  
+
     const folder = path.join(this._baseFolder, id);
     fs.rmSync(folder, { recursive: true, force: true });
     this._deleteTestRun(run);
@@ -103,9 +104,14 @@ export class Controller {
     folders.forEach(id => {
       const metadata = path.join(this._baseFolder, id, metadataName);
       if (fs.existsSync(metadata)) {
-        const content = fs.readFileSync(metadata, {encoding: 'utf8', flag: 'r'});
-        const run = JSON.parse(content);
-        this._upsertTestRun(run);
+        const fd = fs.openSync(metadata, 'r');
+        try {
+          const content = fs.readFileSync(fd, { encoding: 'utf8' });
+          const run = JSON.parse(content);
+          this._upsertTestRun(run);
+        } finally {
+          fs.closeSync(fd);
+        }
       }
     })
     this._cancelRunningTests();
@@ -117,7 +123,7 @@ export class Controller {
   }
 
   public testRunExists(id: string): boolean {
-      return this._getTestRun(id) != undefined;
+    return this._getTestRun(id) != undefined;
   }
 
   public deleteTestRun(id: string): string {
@@ -130,16 +136,22 @@ export class Controller {
     return this._testRuns.map(x => this._purgeTestRun(x));
   }
 
+  private _read(fullPathName: string) {
+    const fd = fs.openSync(fullPathName, 'r');
+    try {
+      fs.readFileSync(fd, { encoding: 'utf8' });
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
   public async getTestRunStatus(id: string, limit: number = 1000) {
     const run = this._getTestRun(id);
     if (!run) throw new Error(`Test ${id} does not exist.`);
-  
-    const output = limit 
-      ? await read(run.stdout, limit) 
-      : fs.readFileSync(run.stdout, {encoding: 'utf8', flag: 'r'});
 
+    const output = limit ? await read(run.stdout, limit) : this._read(run.stdout);
     const data = {
-      ... run,
+      ...run,
       refresh: run.status === TestRunStatus.running ? this._refreshTimeInSeconds : false,
       output: output,
     };
@@ -152,29 +164,29 @@ export class Controller {
     if (!testRuns.length) {
       return Mustache.render(noTestsFoundTemplate, { refresh: this._refreshTimeInSeconds });
     }
-  
+
     const runs = testRuns
       .sort((f, s) => Date.parse(f.timestamp) - Date.parse(s.timestamp))
       .map(test => {
         switch (test.status) {
           case TestRunStatus.done:
-            return { ... test, link: `${this._baseUrl}/${test.id}/results/`, text: 'results' };
+            return { ...test, link: `${this._baseUrl}/${test.id}/results/`, text: 'results' };
           case TestRunStatus.cancelled:
-            return { ... test, link: `${this._baseUrl}/${test.id}`, text: 'output' };
+            return { ...test, link: `${this._baseUrl}/${test.id}`, text: 'output' };
           case TestRunStatus.running:
-            return { ... test, link: `${this._baseUrl}/${test.id}`, text: 'status' };
+            return { ...test, link: `${this._baseUrl}/${test.id}`, text: 'status' };
           default:
             throw new Error(`Unknown test status: `, test.status);
         }
       });
-    
-    const runsGroupedByCategory = _.groupBy(runs, (run: {category?: string}) => run.category);
+
+    const runsGroupedByCategory = _.groupBy(runs, (run: { category?: string }) => run.category);
     const runsByCategoryAndName = _.keys(runsGroupedByCategory).map(x => {
-      const categoryGroupedByName = _.groupBy(runsGroupedByCategory[x] || [], (run: {name: string}) => run.name);
-      const categoryByName = _.keys(categoryGroupedByName).map(x => ({name: x, group: categoryGroupedByName[x] || []}));
-      return {category: x, group: categoryByName};
+      const categoryGroupedByName = _.groupBy(runsGroupedByCategory[x] || [], (run: { name: string }) => run.name);
+      const categoryByName = _.keys(categoryGroupedByName).map(x => ({ name: x, group: categoryGroupedByName[x] || [] }));
+      return { category: x, group: categoryByName };
     });
-  
+
     const data = {
       refresh: this._refreshTimeInSeconds,
       tests: runsByCategoryAndName,
@@ -188,7 +200,7 @@ export class Controller {
     fs.mkdirSync(folder);
 
     await fsp.writeFile(path.join(folder, testName), body);
-  
+
     const parsed = this._testParser.parse(body) as JMeterTest;
     const stdout = path.join(folder, stdoutName);
     const timestamp = new Date().toISOString();
@@ -206,7 +218,11 @@ export class Controller {
     const jmeter = cp.spawn('jmeter', ['-n', '-t', `${testName}`, '-l', `${reportName}`, '-e', '-o', `${resultsFolder}`], { cwd: folder });
 
     jmeter.on('close', (code) => {
-      this._writeMetadata(this._upsertTestRun({ ...run, status: TestRunStatus.done, code: code }));
+      try {
+        this._writeMetadata(this._upsertTestRun({ ...run, status: TestRunStatus.done, code: code }));
+      } catch (error) {
+        console.error('Failed to write metadata because: ', error);
+      }
     });
 
     jmeter.stdout.pipe(fs.createWriteStream(stdout, { encoding: 'utf8', flags: 'w', flush: true, autoClose: true, emitClose: false }));
