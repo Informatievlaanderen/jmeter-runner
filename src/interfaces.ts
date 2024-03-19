@@ -19,7 +19,6 @@ export interface TestRun {
   category?: string;
   name: string;
   timestamp: string;
-  stdout: string;
   status: TestRunStatus;
   code: number | null;
 }

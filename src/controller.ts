@@ -73,12 +73,7 @@ export class Controller {
 
   private _writeMetadata(run: TestRun) {
     const metadata = path.join(this._baseFolder, run.id, metadataName);
-    const fd = fs.openSync(metadata, 'w');
-    try {
-      fs.writeFileSync(fd, JSON.stringify(run), { encoding: 'utf8', flush: true });
-    } finally {
-      fs.closeSync(fd);
-    }
+    this._write(metadata, JSON.stringify(run));
   }
 
   private _purgeTestRun(run: TestRun) {
@@ -91,6 +86,33 @@ export class Controller {
     fs.rmSync(folder, { recursive: true, force: true });
     this._deleteTestRun(run);
     return '';
+  }
+
+  private _read(fullPathName: string) {
+    const fd = fs.openSync(fullPathName, 'r');
+    try {
+      return fs.readFileSync(fd, { encoding: 'utf8' });
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  private _write(fullPathName: string, data: string) {
+    const fd = fs.openSync(fullPathName, 'w');
+    try {
+      fs.writeFileSync(fd, data, { encoding: 'utf8', flush: true });
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  private _append(fullPathName: string, data: string) {
+    const fd = fs.openSync(fullPathName, 'a');
+    try {
+      fs.writeFileSync(fd, data, { encoding: 'utf8', flush: true });
+    } finally {
+      fs.closeSync(fd);
+    }
   }
 
   constructor(private _baseFolder: string, private _baseUrl: string, private _refreshTimeInSeconds: number) { }
@@ -136,20 +158,12 @@ export class Controller {
     return this._testRuns.map(x => this._purgeTestRun(x));
   }
 
-  private _read(fullPathName: string) {
-    const fd = fs.openSync(fullPathName, 'r');
-    try {
-      fs.readFileSync(fd, { encoding: 'utf8' });
-    } finally {
-      fs.closeSync(fd);
-    }
-  }
-
   public async getTestRunStatus(id: string, limit: number = 1000) {
     const run = this._getTestRun(id);
     if (!run) throw new Error(`Test ${id} does not exist.`);
 
-    const output = limit ? await read(run.stdout, limit) : this._read(run.stdout);
+    const logs = path.join(this._baseFolder, id, stdoutName);
+    const output = limit ? await read(logs, limit) : this._read(logs);
     const data = {
       ...run,
       refresh: run.status === TestRunStatus.running ? this._refreshTimeInSeconds : false,
@@ -202,7 +216,6 @@ export class Controller {
     await fsp.writeFile(path.join(folder, testName), body);
 
     const parsed = this._testParser.parse(body) as JMeterTest;
-    const stdout = path.join(folder, stdoutName);
     const timestamp = new Date().toISOString();
 
     const run = {
@@ -210,7 +223,6 @@ export class Controller {
       name: parsed.jmeterTestPlan.hashTree.TestPlan._testname,
       category: category,
       timestamp: timestamp,
-      stdout: stdout,
       status: TestRunStatus.running
     } as TestRun;
     this._writeMetadata(this._upsertTestRun(run));
@@ -225,7 +237,10 @@ export class Controller {
       }
     });
 
-    jmeter.stdout.pipe(fs.createWriteStream(stdout, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
+    // jmeter.stdout.pipe(fs.createWriteStream(stdout, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
+    const logs = path.join(folder, stdoutName);
+    jmeter.stdout.on('data', (data: any) => { this._append(logs, data.toString())});
+    jmeter.stderr.on('data', (data: any) => { this._append(logs, data.toString())});
 
     const statusUrl = `${this._baseUrl}/${id}`;
     const resultsUrl = `${statusUrl}/results/`;
