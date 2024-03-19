@@ -225,7 +225,7 @@ export class Controller {
       }
     });
 
-    jmeter.stdout.pipe(fs.createWriteStream(stdout, { encoding: 'utf8', flags: 'w', flush: true, autoClose: true, emitClose: false }));
+    jmeter.stdout.pipe(fs.createWriteStream(stdout, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
 
     const statusUrl = `${this._baseUrl}/${id}`;
     const resultsUrl = `${statusUrl}/results/`;
