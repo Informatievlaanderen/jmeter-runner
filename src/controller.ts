@@ -96,8 +96,8 @@ export class Controller {
     fs.writeFileSync(fullPathName, data, { encoding: 'utf8', flush: true });
   }
 
-  private _append(fullPathName: string, data: string) {
-    fs.appendFileSync(fullPathName, data, { encoding: 'utf8', flush: true });
+  private _append(fullPathName: string, data: any) {
+    fs.appendFileSync(fullPathName, data);
   }
 
   constructor(private _baseFolder: string, private _baseUrl: string, private _refreshTimeInSeconds: number) { }
@@ -224,8 +224,7 @@ export class Controller {
 
     // jmeter.stdout.pipe(fs.createWriteStream(stdout, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
     const logs = path.join(folder, stdoutName);
-    jmeter.stdout.on('data', (data: any) => { this._append(logs, data.toString()) });
-    jmeter.stderr.on('data', (data: any) => { this._append(logs, data.toString()) });
+    jmeter.stdout.on('data', (data: any) => this._append(logs, data));
 
     const statusUrl = `${this._baseUrl}/${id}`;
     const resultsUrl = `${statusUrl}/results/`;
