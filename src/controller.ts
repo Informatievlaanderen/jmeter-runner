@@ -8,7 +8,7 @@ import * as cp from 'node:child_process';
 import { XMLParser } from "fast-xml-parser";
 import { read } from 'read-last-lines';
 
-import { JMeterTest, TestRun, TestRunDatabase, TestRunStatus } from "./interfaces";
+import { JMeterTest, TestRun, TestRunStatus } from "./interfaces";
 
 export const metadataName = 'metadata.json';
 const testName = 'test.jmx';
@@ -35,27 +35,32 @@ const overviewTemplate = '<!DOCTYPE html><html>\
   {{/tests}}\
   </body></html>';
 
+
+interface Test {
+  run: TestRun;
+  process: cp.ChildProcessWithoutNullStreams | undefined;
+}
+
+interface TestRunDatabase {
+  [key: string]: Test
+}
+
 export class Controller {
 
-  private _testRunsById: TestRunDatabase = {};
+  private _testsById: TestRunDatabase = {};
   private _testParser = new XMLParser({ stopNodes: ['jmeterTestPlan.hashTree.hashTree'], ignoreAttributes: false, attributeNamePrefix: '_' });
 
-  private get _testRuns() {
-    return Object.values(this._testRunsById);
+  private get _tests() {
+    return Object.values(this._testsById);
   }
 
-  private _getTestRun(id: string) {
-    return this._testRunsById[id];
+  private _getTest(id: string) {
+    return this._testsById[id];
   }
 
-  private _upsertTestRun(run: TestRun) {
-    this._testRunsById[run.id] = run;
-    return run;
-  }
-
-  private _deleteTestRun(run: TestRun) {
-    delete this._testRunsById[run.id];
-    return run;
+  private _upsertTest(test: Test) {
+    this._testsById[test.run.id] = test;
+    return test;
   }
 
   private async _getSubDirectories(source: string) {
@@ -63,9 +68,9 @@ export class Controller {
   }
 
   private _cancelRunningTests() {
-    Object.values(this._testRunsById).forEach(run => {
-      if (run.status === TestRunStatus.running) {
-        run.status = TestRunStatus.cancelled;
+    Object.values(this._testsById).forEach(test => {
+      if (test.run.status === TestRunStatus.running) {
+        test.run.status = TestRunStatus.cancelled;
       }
     });
   }
@@ -73,20 +78,6 @@ export class Controller {
   private _writeMetadata(run: TestRun) {
     const metadata = path.join(this._baseFolder, run.id, metadataName);
     this._write(metadata, JSON.stringify(run));
-  }
-
-  private _purgeTestRun(run: TestRun) {
-    const id = run.id;
-    if (run.status === TestRunStatus.running) {
-      return `Test ${id} is still running.`
-    }
-
-    const folder = path.join(this._baseFolder, id);
-    fs.rmSync(folder, { recursive: true, force: true });
-    const logs = path.join(this._logFolder, `${id}.log`);
-    fs.rmSync(logs);
-    this._deleteTestRun(run);
-    return '';
   }
 
   private _read(fullPathName: string) {
@@ -98,13 +89,14 @@ export class Controller {
   }
 
   constructor(
-    private _baseFolder: string, 
-    private _baseUrl: string, 
-    private _refreshTimeInSeconds: number, 
-    private _logFolder: string) { }
+    private _baseFolder: string,
+    private _baseUrl: string,
+    private _refreshTimeInSeconds: number,
+    private _logFolder: string,
+    private _silent: boolean) { }
 
   public get runningCount(): number {
-    return Object.values(this._testRunsById).filter(x => x.status == TestRunStatus.running).length;
+    return Object.values(this._testsById).filter(x => x.run.status == TestRunStatus.running).length;
   }
 
   public async importTestRuns() {
@@ -116,7 +108,7 @@ export class Controller {
         try {
           const content = fs.readFileSync(fd, { encoding: 'utf8' });
           const run = JSON.parse(content);
-          this._upsertTestRun(run);
+          this._upsertTest({ run: run, process: undefined } as Test);
         } finally {
           fs.closeSync(fd);
         }
@@ -127,45 +119,80 @@ export class Controller {
 
   public async exportTestRuns() {
     this._cancelRunningTests();
-    this._testRuns.forEach(run => this._writeMetadata(run));
+    this._tests.forEach(test => this._writeMetadata(test.run));
   }
 
-  public testRunExists(id: string): boolean {
-    return this._getTestRun(id) != undefined;
+  public testExists(id: string): boolean {
+    return this._getTest(id) != undefined;
   }
 
-  public deleteTestRun(id: string): string {
-    const run = this._getTestRun(id);
-    if (!run) throw new Error(`Test ${id} does not exist.`);
-    return this._purgeTestRun(run);
+  public testRunning(id: string): boolean {
+    const test = this._getTest(id);
+    return !!test && test.run.status === TestRunStatus.running;
   }
 
-  public deleteAllTestRuns(): string[] {
-    return this._testRuns.map(x => this._purgeTestRun(x));
+  public deleteTest(id: string) {
+    const testRunData = path.join(this._baseFolder, id);
+    const logFile = path.join(this._logFolder, `${id}.log`);
+
+    const exists = this.testExists(id);
+    if (exists) {
+      if (this.testRunning(id)) {
+        console.warn(`[WARN] Test ${id} is running...`);
+        const process = this._testsById[id]?.process;
+        console.warn(`[WARN] Killing pid ${process?.pid}...`);
+        const killed = process?.kill;
+        console.warn(killed ? `[WARN] Test ${id} was cancelled.` : `Failed to kill test ${id} (pid: ${process?.pid}).`);
+      }
+      delete this._testsById[id];
+    } else {
+      console.warn(`[WARN] Test ${id} does not exist (in memory DB) but trying to remove test data (${testRunData}) and log file (${logFile}).`);
+    }
+
+    const testDataExists = fs.existsSync(testRunData);
+    if (testDataExists) {
+      if (!this._silent) console.info(`[INFO] Deleting test data at ${testRunData}...`);
+      fs.rmSync(testRunData, { recursive: true, force: true });
+      console.warn(`[WARN] Deleted test data at ${testRunData}.`);
+    }
+
+    const logFileExists = fs.existsSync(logFile);
+    if (logFileExists) {
+      if (!this._silent) console.info(`[INFO] Deleting log file at ${logFile}...`);
+      fs.rmSync(logFile);
+      console.warn(`[WARN] Deleted log file at ${logFile}.`);
+    }
+
+    return exists || testDataExists || logFileExists;
+  }
+
+  public deleteAllTestRuns() {
+    this._tests.map(x => this.deleteTest(x.run.id));
   }
 
   public async getTestRunStatus(id: string, limit: number = 1000) {
-    const run = this._getTestRun(id);
-    if (!run) throw new Error(`Test ${id} does not exist.`);
+    const test = this._getTest(id);
+    if (!test) throw new Error(`Test ${id} does not exist.`);
 
     const logs = path.join(this._logFolder, `${id}.log`);
     const output = limit ? await read(logs, limit) : this._read(logs);
     const data = {
-      ...run,
-      refresh: run.status === TestRunStatus.running ? this._refreshTimeInSeconds : false,
+      ...test.run,
+      refresh: test.run.status === TestRunStatus.running ? this._refreshTimeInSeconds : false,
       output: output,
     };
     return Mustache.render(statusTemplate, data);
   }
 
   public getTestRunsOverview() {
-    const testRuns = this._testRuns;
+    const tests = this._tests;
 
-    if (!testRuns.length) {
+    if (!tests.length) {
       return Mustache.render(noTestsFoundTemplate, { refresh: this._refreshTimeInSeconds });
     }
 
-    const runs = testRuns
+    const runs = tests
+      .map(x => x.run)
       .sort((f, s) => Date.parse(f.timestamp) - Date.parse(s.timestamp))
       .map(test => {
         switch (test.status) {
@@ -204,6 +231,7 @@ export class Controller {
     const parsed = this._testParser.parse(body) as JMeterTest;
     const timestamp = new Date().toISOString();
 
+    const jmeter = cp.spawn('jmeter', ['-n', '-t', `${testName}`, '-l', `${reportName}`, '-e', '-o', `${resultsFolder}`], { cwd: folder });
     const run = {
       id: id,
       name: parsed.jmeterTestPlan.hashTree.TestPlan._testname,
@@ -211,13 +239,14 @@ export class Controller {
       timestamp: timestamp,
       status: TestRunStatus.running
     } as TestRun;
-    this._writeMetadata(this._upsertTestRun(run));
+    const test = this._upsertTest({ run: run, process: jmeter } as Test);
 
-    const jmeter = cp.spawn('jmeter', ['-n', '-t', `${testName}`, '-l', `${reportName}`, '-e', '-o', `${resultsFolder}`], { cwd: folder });
+    this._writeMetadata(test.run);
 
     jmeter.on('close', (code) => {
       try {
-        this._writeMetadata(this._upsertTestRun({ ...run, status: TestRunStatus.done, code: code }));
+        const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code }, process: jmeter } as Test;
+        this._writeMetadata(this._upsertTest(updatedTest).run);
       } catch (error) {
         console.error('Failed to write metadata because: ', error);
       }

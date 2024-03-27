@@ -20,9 +20,5 @@ export interface TestRun {
   name: string;
   timestamp: string;
   status: TestRunStatus;
-  code: number | null;
-}
-
-export interface TestRunDatabase {
-  [key: string]: TestRun
+  code: number | undefined;
 }

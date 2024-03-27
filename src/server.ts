@@ -39,7 +39,7 @@ if (!fs.existsSync(logFolder)) {
 logFolder = fs.realpathSync(logFolder);
 console.info("Storing logs in: ", logFolder);
 
-const controller = new Controller(baseFolder, baseUrl, refreshTimeInSeconds, logFolder);
+const controller = new Controller(baseFolder, baseUrl, refreshTimeInSeconds, logFolder, silent);
 
 function checkApiKey(request: any, apiKey: string): boolean {
   return !apiKey || request.headers['x-api-key'] === apiKey;
@@ -89,7 +89,7 @@ server.post('/', { schema: { querystring: { category: { type: 'string' } } } }, 
     if (controller.runningCount >= maxRunning) {
       return reply.status(503)
         .header('content-type', 'text/plain')
-        .send(`Cannot start new test run as the maximum (${maxRunning}) simultaneous tests runs are currently running. Try again later.`);
+        .send(`Cannot start new test run as the maximum (${maxRunning}) simultaneous tests runs are currently running. Try again later.\n`);
     }
 
     const parameters = request.query as { category?: string };
@@ -112,7 +112,7 @@ server.get('/', async (request, reply) => {
     const body = controller.getTestRunsOverview();
     reply.header('content-type', 'text/html').send(body);
   } catch (error) {
-    reply.send({ msg: 'Cannot display test runs overview', error: error });
+    reply.send({ msg: 'Cannot display test runs overview\n', error: error });
   }
 });
 
@@ -125,55 +125,57 @@ server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, a
   const { id } = request.params as { id: string };
 
   try {
-    if (controller.testRunExists(id)) {
+    if (controller.testExists(id)) {
       const body = await controller.getTestRunStatus(id, parameters.limit);
       reply.header('content-type', 'text/html').send(body);
     } else {
       reply.status(404).send('');
     }
   } catch (error) {
-    reply.send({ msg: `Cannot display status for test run ${id}`, error: error });
+    reply.send({ msg: `Cannot display status for test run ${id}\n`, error: error });
   }
 });
 
-server.delete('/', async (request, reply) => {
+server.delete('/', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
     return reply.status(401).send('');
   }
 
+  const parameters = request.query as { confirm?: boolean };
+
   try {
-    const responses = controller.deleteAllTestRuns().filter(x => !!x);
-    if (responses.length > 0) {
-      const response = responses.join('\n');
-      reply.status(405).send(response);
+    if (controller.runningCount > 0 && !parameters.confirm) {
+      reply.status(405).send("Cannot delete all tests as some are still running.\nHint:pass query parameter '?confirm=true'.\n");
     } else {
-      reply.send('All tests deleted');
+      controller.deleteAllTestRuns();
+      reply.send('All tests deleted\n');
     }
   } catch (error) {
-    reply.send({ msg: 'Cannot delete all tests', error: error });
+    reply.send({ msg: 'Cannot delete all tests\n', error: error });
   }
 });
 
-server.delete('/:id', async (request, reply) => {
+server.delete('/:id', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
     return reply.status(401).send('');
   }
 
   const { id } = request.params as { id: string };
+  const parameters = request.query as { confirm?: boolean };
 
   try {
-    if (controller.testRunExists(id)) {
-      const response = controller.deleteTestRun(id);
-      if (response) {
-        reply.status(405).send(response);
-      } else {
-        reply.send(`Test ${id} deleted`);
-      }
+    if (controller.testRunning(id) && !parameters.confirm) {
+      reply.status(405).send(`Test ${id} is still running.\nHint:pass query parameter '?confirm=true'.\n`);
     } else {
-      reply.status(404).send('');
+      const deleted = controller.deleteTest(id);
+      if (deleted) {
+        reply.send(`Test ${id} deleted\n`);
+      } else {
+        reply.status(404).send(`Test ${id} not found\n`);
+      }
     }
   } catch (error) {
-    reply.send({ msg: `Cannot delete test ${id}`, error: error });
+    reply.send({ msg: `Cannot delete test ${id}\n`, error: error });
   }
 });
 
