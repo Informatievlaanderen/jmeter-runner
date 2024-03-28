@@ -51,8 +51,8 @@ ENV PATH=${JMETER_HOME}/bin:$PATH
 RUN mkdir /tmp/jmeter
 RUN chmod 0777 /tmp/jmeter
 RUN chown node:node /tmp/jmeter
-RUN echo "# temp folder for report generation" >> /home/node/apache-jmeter/user.properties
-RUN echo "jmeter.reportgenerator.temp_dir=/tmp/jmeter" >> /home/node/apache-jmeter/user.properties
+RUN echo "# temp folder for report generation" >> /home/node/apache-jmeter/bin/user.properties
+RUN echo "jmeter.reportgenerator.temp_dir=/tmp/jmeter" >> /home/node/apache-jmeter/bin/user.properties
 # run as node
 RUN chown node:node -R /home/node/*
 WORKDIR /home/node/jmeter-runner
