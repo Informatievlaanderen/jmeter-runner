@@ -47,6 +47,11 @@ RUN tar -xvzf apache-jmeter-${JMETER_TAG}.tgz && rm apache-jmeter-${JMETER_TAG}.
 RUN ln -s apache-jmeter-${JMETER_TAG} apache-jmeter
 ENV JMETER_HOME=/home/node/apache-jmeter
 ENV PATH=${JMETER_HOME}/bin:$PATH
+# set jmeter temp folder for report generation
+RUN mkdir /tmp/jmeter
+RUN chmod 0777 /tmp/jmeter
+RUN chown node:node /tmp/jmeter
+RUN echo "jmeter.reportgenerator.temp_dir=/tmp/jmeter" >> user.properties
 # run as node
 RUN chown node:node -R /home/node/*
 WORKDIR /home/node/jmeter-runner
