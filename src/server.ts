@@ -2,11 +2,26 @@ import fastify from 'fastify'
 import fastifyStatic from '@fastify/static';
 import minimist from 'minimist'
 import fs from 'node:fs';
+import * as prometheus from 'prom-client';
 
 import { Controller, metadataName } from './controller';
 
 const megabyte = 1048576;
 const server = fastify({ bodyLimit: 10 * megabyte });
+
+const register = new prometheus.Registry();
+register.setDefaultLabels({app: 'jmeter-runner'});
+
+prometheus.collectDefaultMetrics({
+  register: register,
+  prefix: 'node_',
+  gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5],
+});
+
+server.get('/prometheus', async (_, reply) => {
+  reply.header('Content-Type', register.contentType).send(await register.metrics());
+});
+
 
 const args = minimist(process.argv.slice(2));
 const silent: boolean = (/true/i).test(args['silent']);
