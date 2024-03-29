@@ -1,10 +1,32 @@
 import { Registry, PrometheusContentType } from 'prom-client';
 
+export interface JMeterStringProp {
+  _name: string,
+  _text: string
+}
+
+export interface JMeterElementProp {
+  _name: string,
+  stringProp: JMeterStringProp[]
+}
+
+export interface JMeterCollectionProp {
+  elementProp: JMeterElementProp[]
+}
+
+export interface JMeterArguments {
+  _testname: string;
+  collectionProp: JMeterCollectionProp;
+}
+
 export interface JMeterTest {
   jmeterTestPlan: {
     hashTree: {
       TestPlan: {
         _testname: string
+      },
+      hashTree: {
+        Arguments: JMeterArguments[]
       }
     }
   }

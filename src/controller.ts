@@ -46,14 +46,16 @@ interface TestRunDatabase {
   [key: string]: Test
 }
 
+type Labels = { [x in string]: string | undefined };
+
 export class Controller {
 
   private _testsById: TestRunDatabase = {};
-  private _testParser = new XMLParser({ stopNodes: ['jmeterTestPlan.hashTree.hashTree'], ignoreAttributes: false, attributeNamePrefix: '_' });
+  private _testParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '_', textNodeName: '_text' });
   private _testDuration: Gauge = new Gauge({
     name: 'jmeter_test_duration',
     help: 'jmeter test duration (in seconds)',
-    labelNames: ['category', 'name'],
+    labelNames: ['category', 'name', 'threads', 'size', 'type', 'component'],
   });
 
   private get _tests() {
@@ -96,7 +98,7 @@ export class Controller {
 
   constructor(private _config: ControllerConfig) {
     _config.register.registerMetric(this._testDuration);
-   }
+  }
 
   public get runningCount(): number {
     return Object.values(this._testsById).filter(x => x.run.status == TestRunStatus.running).length;
@@ -232,13 +234,20 @@ export class Controller {
     await fsp.writeFile(path.join(folder, testName), body);
 
     const parsed = this._testParser.parse(body) as JMeterTest;
+    const testPlan = parsed.jmeterTestPlan.hashTree.TestPlan;
+    const testLabels = parsed.jmeterTestPlan.hashTree.hashTree.Arguments.find(x => x._testname === 'Labels');
+
+    const labels = testLabels?.collectionProp.elementProp
+      .map(x => ({ key: x._name, value: x.stringProp.find(s => s._name === 'Argument.value')?._text }))
+      .reduce<Labels>((a, x) => (a[x.key] = x.value?.toString(), a), {});
+
     const timestamp = new Date().toISOString();
     const endTimer = this._testDuration.startTimer();
 
     const jmeter = cp.spawn('jmeter', ['-n', '-t', `${testName}`, '-l', `${reportName}`, '-e', '-o', `${resultsFolder}`], { cwd: folder });
     const run = {
       id: id,
-      name: parsed.jmeterTestPlan.hashTree.TestPlan._testname,
+      name: testPlan._testname,
       category: category,
       timestamp: timestamp,
       status: TestRunStatus.running
@@ -249,7 +258,7 @@ export class Controller {
 
     jmeter.on('close', (code) => {
       try {
-        const duration = endTimer({ category: run.category, name: run.name });
+        const duration = endTimer({ ...labels, category: run.category, name: run.name });
         const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code, duration: duration }, process: jmeter } as Test;
         this._writeMetadata(this._upsertTest(updatedTest).run);
       } catch (error) {
