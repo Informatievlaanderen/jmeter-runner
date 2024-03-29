@@ -1,4 +1,6 @@
 # Jmeter Runner
+> **Note** that the documentation below is not yet complete. Some features (e.g. prometheus, delete confirmation, etc.) are not yet described. Please also see the source code for now.
+
 A small HTTP server to simplify running jmeter tests, follow progress and check the results.
 
 The server needs only minimal configuration. You need to provide a location to store the tests and their results and you need to configure the base URL of the HTTP server.
