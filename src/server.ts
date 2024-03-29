@@ -2,20 +2,20 @@ import fastify from 'fastify'
 import fastifyStatic from '@fastify/static';
 import minimist from 'minimist'
 import fs from 'node:fs';
-import * as prometheus from 'prom-client';
+import { Registry, collectDefaultMetrics } from 'prom-client';
 
 import { Controller, metadataName } from './controller';
+import { ControllerConfig } from './interfaces';
 
 const megabyte = 1048576;
 const server = fastify({ bodyLimit: 10 * megabyte });
 
-const register = new prometheus.Registry();
-register.setDefaultLabels({app: 'jmeter-runner'});
+const register = new Registry();
+register.setDefaultLabels({ app: 'jmeter-runner' });
 
-prometheus.collectDefaultMetrics({
+collectDefaultMetrics({
   register: register,
   prefix: 'node_',
-  gcDurationBuckets: [0.001, 0.01, 0.1, 1, 2, 5],
 });
 
 server.get('/prometheus', async (_, reply) => {
@@ -54,7 +54,7 @@ if (!fs.existsSync(logFolder)) {
 logFolder = fs.realpathSync(logFolder);
 console.info("Storing logs in: ", logFolder);
 
-const controller = new Controller(baseFolder, baseUrl, refreshTimeInSeconds, logFolder, silent);
+const controller = new Controller({ baseFolder, baseUrl, refreshTimeInSeconds, logFolder, silent, register } as ControllerConfig);
 
 function checkApiKey(request: any, apiKey: string): boolean {
   return !apiKey || request.headers['x-api-key'] === apiKey;

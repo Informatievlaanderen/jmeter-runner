@@ -1,3 +1,5 @@
+import { Registry, PrometheusContentType } from 'prom-client';
+
 export interface JMeterTest {
   jmeterTestPlan: {
     hashTree: {
@@ -21,4 +23,14 @@ export interface TestRun {
   timestamp: string;
   status: TestRunStatus;
   code: number | undefined;
+  duration: number | undefined;
+}
+
+export interface ControllerConfig {
+  baseFolder: string,
+  baseUrl: string,
+  logFolder: string,
+  refreshTimeInSeconds: number,
+  silent: boolean,
+  register: Registry<PrometheusContentType>
 }

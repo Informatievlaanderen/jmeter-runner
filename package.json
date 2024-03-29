@@ -4,7 +4,6 @@
   "description": "Test runner for jmeter",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc -p tsconfig.json",
     "start": "npm run build && node dist/server.js"
   },
