@@ -8,7 +8,8 @@ import * as cp from 'node:child_process';
 import { XMLParser } from "fast-xml-parser";
 import { read } from 'read-last-lines';
 
-import { JMeterTest, TestRun, TestRunStatus } from "./interfaces";
+import { JMeterTest, TestRun, TestRunStatus, ControllerConfig } from "./interfaces";
+import { Gauge } from 'prom-client';
 
 export const metadataName = 'metadata.json';
 const testName = 'test.jmx';
@@ -49,6 +50,11 @@ export class Controller {
 
   private _testsById: TestRunDatabase = {};
   private _testParser = new XMLParser({ stopNodes: ['jmeterTestPlan.hashTree.hashTree'], ignoreAttributes: false, attributeNamePrefix: '_' });
+  private _testDuration: Gauge = new Gauge({
+    name: 'jmeter_test_duration',
+    help: 'jmeter test duration (in seconds)',
+    labelNames: ['category', 'name'],
+  });
 
   private get _tests() {
     return Object.values(this._testsById);
@@ -76,7 +82,7 @@ export class Controller {
   }
 
   private _writeMetadata(run: TestRun) {
-    const metadata = path.join(this._baseFolder, run.id, metadataName);
+    const metadata = path.join(this._config.baseFolder, run.id, metadataName);
     this._write(metadata, JSON.stringify(run));
   }
 
@@ -88,21 +94,18 @@ export class Controller {
     fs.writeFileSync(fullPathName, data, { encoding: 'utf8', flush: true });
   }
 
-  constructor(
-    private _baseFolder: string,
-    private _baseUrl: string,
-    private _refreshTimeInSeconds: number,
-    private _logFolder: string,
-    private _silent: boolean) { }
+  constructor(private _config: ControllerConfig) {
+    _config.register.registerMetric(this._testDuration);
+   }
 
   public get runningCount(): number {
     return Object.values(this._testsById).filter(x => x.run.status == TestRunStatus.running).length;
   }
 
   public async importTestRuns() {
-    const folders = await this._getSubDirectories(this._baseFolder);
+    const folders = await this._getSubDirectories(this._config.baseFolder);
     folders.forEach(id => {
-      const metadata = path.join(this._baseFolder, id, metadataName);
+      const metadata = path.join(this._config.baseFolder, id, metadataName);
       if (fs.existsSync(metadata)) {
         const fd = fs.openSync(metadata, 'r');
         try {
@@ -132,8 +135,8 @@ export class Controller {
   }
 
   public deleteTest(id: string) {
-    const testRunData = path.join(this._baseFolder, id);
-    const logFile = path.join(this._logFolder, `${id}.log`);
+    const testRunData = path.join(this._config.baseFolder, id);
+    const logFile = path.join(this._config.logFolder, `${id}.log`);
 
     const exists = this.testExists(id);
     if (exists) {
@@ -151,14 +154,14 @@ export class Controller {
 
     const testDataExists = fs.existsSync(testRunData);
     if (testDataExists) {
-      if (!this._silent) console.info(`[INFO] Deleting test data at ${testRunData}...`);
+      if (!this._config.silent) console.info(`[INFO] Deleting test data at ${testRunData}...`);
       fs.rmSync(testRunData, { recursive: true, force: true });
       console.warn(`[WARN] Deleted test data at ${testRunData}.`);
     }
 
     const logFileExists = fs.existsSync(logFile);
     if (logFileExists) {
-      if (!this._silent) console.info(`[INFO] Deleting log file at ${logFile}...`);
+      if (!this._config.silent) console.info(`[INFO] Deleting log file at ${logFile}...`);
       fs.rmSync(logFile);
       console.warn(`[WARN] Deleted log file at ${logFile}.`);
     }
@@ -174,11 +177,11 @@ export class Controller {
     const test = this._getTest(id);
     if (!test) throw new Error(`Test ${id} does not exist.`);
 
-    const logs = path.join(this._logFolder, `${id}.log`);
+    const logs = path.join(this._config.logFolder, `${id}.log`);
     const output = limit ? await read(logs, limit) : this._read(logs);
     const data = {
       ...test.run,
-      refresh: test.run.status === TestRunStatus.running ? this._refreshTimeInSeconds : false,
+      refresh: test.run.status === TestRunStatus.running ? this._config.refreshTimeInSeconds : false,
       output: output,
     };
     return Mustache.render(statusTemplate, data);
@@ -188,7 +191,7 @@ export class Controller {
     const tests = this._tests;
 
     if (!tests.length) {
-      return Mustache.render(noTestsFoundTemplate, { refresh: this._refreshTimeInSeconds });
+      return Mustache.render(noTestsFoundTemplate, { refresh: this._config.refreshTimeInSeconds });
     }
 
     const runs = tests
@@ -197,11 +200,11 @@ export class Controller {
       .map(test => {
         switch (test.status) {
           case TestRunStatus.done:
-            return { ...test, link: `${this._baseUrl}/${test.id}/results/`, text: 'results' };
+            return { ...test, link: `${this._config.baseUrl}/${test.id}/results/`, text: 'results' };
           case TestRunStatus.cancelled:
-            return { ...test, link: `${this._baseUrl}/${test.id}`, text: 'output' };
+            return { ...test, link: `${this._config.baseUrl}/${test.id}`, text: 'output' };
           case TestRunStatus.running:
-            return { ...test, link: `${this._baseUrl}/${test.id}`, text: 'status' };
+            return { ...test, link: `${this._config.baseUrl}/${test.id}`, text: 'status' };
           default:
             throw new Error(`Unknown test status: `, test.status);
         }
@@ -215,7 +218,7 @@ export class Controller {
     });
 
     const data = {
-      refresh: this._refreshTimeInSeconds,
+      refresh: this._config.refreshTimeInSeconds,
       tests: runsByCategoryAndName,
     };
     return Mustache.render(overviewTemplate, data);
@@ -223,13 +226,14 @@ export class Controller {
 
   public async scheduleTestRun(body: string, category: string | undefined) {
     const id = uuidv4();
-    const folder = path.join(this._baseFolder, id);
+    const folder = path.join(this._config.baseFolder, id);
     fs.mkdirSync(folder);
 
     await fsp.writeFile(path.join(folder, testName), body);
 
     const parsed = this._testParser.parse(body) as JMeterTest;
     const timestamp = new Date().toISOString();
+    const endTimer = this._testDuration.startTimer();
 
     const jmeter = cp.spawn('jmeter', ['-n', '-t', `${testName}`, '-l', `${reportName}`, '-e', '-o', `${resultsFolder}`], { cwd: folder });
     const run = {
@@ -245,17 +249,18 @@ export class Controller {
 
     jmeter.on('close', (code) => {
       try {
-        const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code }, process: jmeter } as Test;
+        const duration = endTimer({ category: run.category, name: run.name });
+        const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code, duration: duration }, process: jmeter } as Test;
         this._writeMetadata(this._upsertTest(updatedTest).run);
       } catch (error) {
         console.error('Failed to write metadata because: ', error);
       }
     });
 
-    const logs = path.join(this._logFolder, `${id}.log`);
+    const logs = path.join(this._config.logFolder, `${id}.log`);
     jmeter.stdout.pipe(fs.createWriteStream(logs, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
 
-    const statusUrl = `${this._baseUrl}/${id}`;
+    const statusUrl = `${this._config.baseUrl}/${id}`;
     const resultsUrl = `${statusUrl}/results/`;
     return { id: id, status: statusUrl, results: resultsUrl };
   }
