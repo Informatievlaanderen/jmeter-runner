@@ -37,8 +37,9 @@ const maxRunning = args['max-running'] || 1;
 const apiKeyRunTest = args['run-test-api-key'] || '';
 const apiKeyCheckTest = args['check-test-api-key'] || '';
 const apiKeyDeleteTest = args['delete-test-api-key'] || '';
-
 const refreshTimeInSeconds = args['refresh-time'] || 30;
+const labels: string = args['custom-labels'];
+const customLabels = labels?.split(' ') || [];
 
 const testFolderBase = args['test-folder-base'] || './tests';
 const baseFolder = fs.realpathSync(testFolderBase);
@@ -54,7 +55,7 @@ if (!fs.existsSync(logFolder)) {
 logFolder = fs.realpathSync(logFolder);
 console.info("Storing logs in: ", logFolder);
 
-const controller = new Controller({ baseFolder, baseUrl, refreshTimeInSeconds, logFolder, silent, register } as ControllerConfig);
+const controller = new Controller({ baseFolder, baseUrl, refreshTimeInSeconds, logFolder, silent, register, customLabels } as ControllerConfig);
 
 function checkApiKey(request: any, apiKey: string): boolean {
   return !apiKey || request.headers['x-api-key'] === apiKey;

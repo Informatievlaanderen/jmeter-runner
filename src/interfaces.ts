@@ -54,5 +54,6 @@ export interface ControllerConfig {
   logFolder: string,
   refreshTimeInSeconds: number,
   silent: boolean,
-  register: Registry<PrometheusContentType>
+  register: Registry<PrometheusContentType>,
+  customLabels: string[],
 }

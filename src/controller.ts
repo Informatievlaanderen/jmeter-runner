@@ -52,11 +52,7 @@ export class Controller {
 
   private _testsById: TestRunDatabase = {};
   private _testParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '_', textNodeName: '_text' });
-  private _testDuration: Gauge = new Gauge({
-    name: 'jmeter_test_duration',
-    help: 'jmeter test duration (in seconds)',
-    labelNames: ['category', 'name', 'threads', 'size', 'type', 'component'],
-  });
+  private _testDuration?: Gauge;
 
   private get _tests() {
     return Object.values(this._testsById);
@@ -97,6 +93,11 @@ export class Controller {
   }
 
   constructor(private _config: ControllerConfig) {
+    this._testDuration = new Gauge({
+      name: 'jmeter_test_duration',
+      help: 'jmeter test duration (in seconds)',
+      labelNames: [...this._config.customLabels, 'category', 'name'],
+    });
     _config.register.registerMetric(this._testDuration);
   }
 
@@ -242,7 +243,7 @@ export class Controller {
       .reduce<Labels>((a, x) => (a[x.key] = x.value?.toString(), a), {});
 
     const timestamp = new Date().toISOString();
-    const endTimer = this._testDuration.startTimer();
+    const endTimer = this._testDuration?.startTimer();
 
     const jmeter = cp.spawn('jmeter', ['-n', '-t', `${testName}`, '-l', `${reportName}`, '-e', '-o', `${resultsFolder}`], { cwd: folder });
     const run = {
@@ -258,7 +259,7 @@ export class Controller {
 
     jmeter.on('close', (code) => {
       try {
-        const duration = endTimer({ ...labels, category: run.category, name: run.name });
+        const duration = endTimer && endTimer({ ...labels, category: run.category, name: run.name });
         const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code, duration: duration }, process: jmeter } as Test;
         this._writeMetadata(this._upsertTest(updatedTest).run);
       } catch (error) {

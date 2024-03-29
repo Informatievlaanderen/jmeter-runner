@@ -35,6 +35,7 @@ ENV REFRESH_TIME=
 ENV RUN_TEST_API_KEY=
 ENV CHECK_TEST_API_KEY=
 ENV DELETE_TEST_API_KEY=
+ENV CUSTOM_LABELS=
 ENV NODE_ENV production
 EXPOSE 80
 # install java runtime
@@ -57,4 +58,4 @@ RUN echo "jmeter.reportgenerator.temp_dir=/tmp/jmeter" >> /home/node/apache-jmet
 RUN chown node:node -R /home/node/*
 WORKDIR /home/node/jmeter-runner
 USER node
-CMD ["sh", "-c", "node ./server.js --host=0.0.0.0 --port=${PORT} --base-url=${BASE_URL} --test-folder-base=${TEST_FOLDER_BASE} --silent=${SILENT} --max-running=${MAX_RUNNING} --refresh-time=${REFRESH_TIME} --run-test-api-key=${RUN_TEST_API_KEY} --check-test-api-key=${CHECK_TEST_API_KEY} --delete-test-api-key=${DELETE_TEST_API_KEY}"]
+CMD ["sh", "-c", "node ./server.js --host=0.0.0.0 --port=${PORT} --base-url=${BASE_URL} --test-folder-base=${TEST_FOLDER_BASE} --silent=${SILENT} --max-running=${MAX_RUNNING} --refresh-time=${REFRESH_TIME} --run-test-api-key=${RUN_TEST_API_KEY} --check-test-api-key=${CHECK_TEST_API_KEY} --delete-test-api-key=${DELETE_TEST_API_KEY} --custom-labels=${CUSTOM_LABELS}}"]
