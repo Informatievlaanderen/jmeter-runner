@@ -7,11 +7,11 @@ export interface JMeterStringProp {
 
 export interface JMeterElementProp {
   _name: string,
-  stringProp: JMeterStringProp[]
+  stringProp: JMeterStringProp | JMeterStringProp[]
 }
 
 export interface JMeterCollectionProp {
-  elementProp: JMeterElementProp[]
+  elementProp: JMeterElementProp | JMeterElementProp[]
 }
 
 export interface JMeterArguments {
@@ -26,7 +26,7 @@ export interface JMeterTest {
         _testname: string
       },
       hashTree: {
-        Arguments: JMeterArguments[]
+        Arguments: JMeterArguments | JMeterArguments[]
       }
     }
   }

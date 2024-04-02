@@ -236,10 +236,15 @@ export class Controller {
 
     const parsed = this._testParser.parse(body) as JMeterTest;
     const testPlan = parsed.jmeterTestPlan.hashTree.TestPlan;
-    const testLabels = parsed.jmeterTestPlan.hashTree.hashTree.Arguments.find(x => x._testname === 'Labels');
-
-    const labels = testLabels?.collectionProp.elementProp
-      .map(x => ({ key: x._name, value: x.stringProp.find(s => s._name === 'Argument.value')?._text }))
+    const args = parsed.jmeterTestPlan.hashTree.hashTree.Arguments;
+    const elements = Array.isArray(args) && args?.find(x => x._testname === 'Labels')?.collectionProp?.elementProp;
+    const labels = Array.isArray(elements) && elements
+      .map(x => ({ 
+        key: x._name, 
+        value: Array.isArray(x.stringProp) 
+          ? x.stringProp.find(s => s._name === 'Argument.value')?._text
+          : (x.stringProp._name === 'Argument.value' ? x.stringProp._text : undefined)
+        }))
       .reduce<Labels>((a, x) => (a[x.key] = x.value?.toString(), a), {});
 
     const timestamp = new Date().toISOString();
