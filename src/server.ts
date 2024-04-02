@@ -111,10 +111,10 @@ server.post('/', { schema: { querystring: { category: { type: 'string' } } } }, 
     const parameters = request.query as { category?: string };
     const body = request.body as string;
     const response = await controller.scheduleTestRun(body, parameters.category);
-    reply.status(201).send(response);
+    return reply.status(201).send(response);
   } catch (error: any) {
     console.error('[ERROR] ', error);
-    reply.status(500);
+    return reply.status(500);
   }
 });
 
@@ -126,9 +126,9 @@ server.get('/', async (request, reply) => {
 
   try {
     const body = controller.getTestRunsOverview();
-    reply.header('content-type', 'text/html').send(body);
+    return reply.header('content-type', 'text/html').send(body);
   } catch (error) {
-    reply.send({ msg: 'Cannot display test runs overview\n', error: error });
+    return reply.send({ msg: 'Cannot display test runs overview\n', error: error });
   }
 });
 
@@ -143,12 +143,12 @@ server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, a
   try {
     if (controller.testExists(id)) {
       const body = await controller.getTestRunStatus(id, parameters.limit);
-      reply.header('content-type', 'text/html').send(body);
+      return reply.header('content-type', 'text/html').send(body);
     } else {
-      reply.status(404).send('');
+      return reply.status(404).send('');
     }
   } catch (error) {
-    reply.send({ msg: `Cannot display status for test run ${id}\n`, error: error });
+    return reply.send({ msg: `Cannot display status for test run ${id}\n`, error: error });
   }
 });
 
@@ -161,13 +161,13 @@ server.delete('/', { schema: { querystring: { confirm: { type: 'boolean' } } } }
 
   try {
     if (controller.runningCount > 0 && !parameters.confirm) {
-      reply.status(405).send("Cannot delete all tests as some are still running.\nHint:pass query parameter '?confirm=true'.\n");
+      return reply.status(405).send("Cannot delete all tests as some are still running.\nHint:pass query parameter '?confirm=true'.\n");
     } else {
       controller.deleteAllTestRuns();
-      reply.send('All tests deleted\n');
+      return reply.send('All tests deleted\n');
     }
   } catch (error) {
-    reply.send({ msg: 'Cannot delete all tests\n', error: error });
+    return reply.send({ msg: 'Cannot delete all tests\n', error: error });
   }
 });
 
@@ -181,17 +181,17 @@ server.delete('/:id', { schema: { querystring: { confirm: { type: 'boolean' } } 
 
   try {
     if (controller.testRunning(id) && !parameters.confirm) {
-      reply.status(405).send(`Test ${id} is still running.\nHint:pass query parameter '?confirm=true'.\n`);
+      return reply.status(405).send(`Test ${id} is still running.\nHint:pass query parameter '?confirm=true'.\n`);
     } else {
       const deleted = controller.deleteTest(id);
       if (deleted) {
-        reply.send(`Test ${id} deleted\n`);
+        return reply.send(`Test ${id} deleted\n`);
       } else {
-        reply.status(404).send(`Test ${id} not found\n`);
+        return reply.status(404).send(`Test ${id} not found\n`);
       }
     }
   } catch (error) {
-    reply.send({ msg: `Cannot delete test ${id}\n`, error: error });
+    return reply.send({ msg: `Cannot delete test ${id}\n`, error: error });
   }
 });
 
