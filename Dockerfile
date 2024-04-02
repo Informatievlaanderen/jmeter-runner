@@ -23,6 +23,7 @@ RUN npm install -g npm@${NPM_TAG}
 # install jmeter-runner
 WORKDIR /home/node
 RUN mkdir -p jmeter-runner/tests
+RUN mkdir -p jmeter-runner/temp
 COPY --chown=node:node --from=builder /build/package*.json jmeter-runner/
 COPY --chown=node:node --from=builder /build/dist/*.js jmeter-runner/
 RUN cd ./jmeter-runner && npm ci --omit=dev
