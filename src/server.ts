@@ -4,7 +4,7 @@ import minimist from 'minimist'
 import fs from 'node:fs';
 import { Registry, collectDefaultMetrics } from 'prom-client';
 
-import { Controller, metadataName } from './controller';
+import { Controller } from './controller';
 import { ControllerConfig } from './interfaces';
 
 const megabyte = 1048576;
@@ -38,38 +38,37 @@ const apiKeyRunTest = args['run-test-api-key'] || '';
 const apiKeyCheckTest = args['check-test-api-key'] || '';
 const apiKeyDeleteTest = args['delete-test-api-key'] || '';
 const refreshTimeInSeconds = args['refresh-time'] || 30;
-const labels: string = args['custom-labels'];
+const labels: string = args['custom-labels'] || undefined;
 const customLabels = labels?.split(' ') || [];
 
 const testFolderBase = args['test-folder-base'] || './tests';
-const baseFolder = fs.realpathSync(testFolderBase);
-if (!fs.existsSync(baseFolder)) {
-  fs.mkdirSync(baseFolder);
+const testFolder = fs.realpathSync(testFolderBase);
+if (!fs.existsSync(testFolder)) {
+  fs.mkdirSync(testFolder);
 }
-console.info("Storing data in: ", baseFolder);
+console.info("Storing test data (test, logs, results, etc) in: ", testFolder);
 
-let logFolder = './logs';
-if (!fs.existsSync(logFolder)) {
-  fs.mkdirSync(logFolder);
+const tempFolderBase = args['temp-folder-base'] || './temp';
+const tempFolder = fs.realpathSync(tempFolderBase);
+if (!fs.existsSync(tempFolder)) {
+  fs.mkdirSync(tempFolder);
 }
-logFolder = fs.realpathSync(logFolder);
-console.info("Storing logs in: ", logFolder);
+console.info("Storing temporary data (during test run) in: ", tempFolder);
 
-const controller = new Controller({ baseFolder, baseUrl, refreshTimeInSeconds, logFolder, silent, register, customLabels } as ControllerConfig);
+const controller = new Controller({ testFolder, tempFolder, baseUrl, refreshTimeInSeconds, silent, register, customLabels } as ControllerConfig);
 
 function checkApiKey(request: any, apiKey: string): boolean {
   return !apiKey || request.headers['x-api-key'] === apiKey;
 }
 
 server.register(fastifyStatic, {
-  root: baseFolder,
-  prefix: '/',
-  allowedPath: (pathName) => !pathName.endsWith(metadataName)
+  root: testFolder,
+  prefix: '/test'
 });
 
 server.addHook('onReady', async () => {
   try {
-    await controller.importTestRuns();
+    await controller.importTestsAndRuns();
   } catch (error) {
     console.error('Failed to import metadata because: ', error);
   }
@@ -152,7 +151,7 @@ server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, a
   }
 });
 
-server.delete('/', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
+server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
     return reply.status(401).send('');
   }
@@ -171,7 +170,7 @@ server.delete('/', { schema: { querystring: { confirm: { type: 'boolean' } } } }
   }
 });
 
-server.delete('/:id', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
+server.delete('/test/:id', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
     return reply.status(401).send('');
   }

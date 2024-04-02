@@ -14,6 +14,7 @@ import { Gauge } from 'prom-client';
 export const metadataName = 'metadata.json';
 const testName = 'test.jmx';
 const reportName = 'report.jtl';
+const outputName = 'output.log';
 const resultsFolder = 'results';
 
 const statusTemplate = '<!DOCTYPE html><html>\
@@ -71,16 +72,40 @@ export class Controller {
     return (await fsp.readdir(source, { withFileTypes: true })).filter(x => x.isDirectory()).map(x => x.name);
   }
 
-  private _cancelRunningTests() {
-    Object.values(this._testsById).forEach(test => {
-      if (test.run.status === TestRunStatus.running) {
-        test.run.status = TestRunStatus.cancelled;
+  private _importTest(id: string) {
+    const metadata = path.join(this._config.testFolder, id, metadataName);
+    if (fs.existsSync(metadata)) {
+      const fd = fs.openSync(metadata, 'r');
+      try {
+        const content = fs.readFileSync(fd, { encoding: 'utf8' });
+        const run = JSON.parse(content) as TestRun;
+        if (run.status === TestRunStatus.running) {
+          run.status = TestRunStatus.cancelled; // just in case
+        }
+        this._upsertTest({ run: run, process: undefined } as Test);
+      } finally {
+        fs.closeSync(fd);
       }
-    });
+    }
+  }
+
+  private _exportRun(id: string) {
+    const run = this._getTest(id)!.run;
+    this._writeMetadata({ ...run, status: TestRunStatus.cancelled });
+    this._moveToResults(id);
+  }
+
+  private _cancelTest(id: string) {
+    const test = this._getTest(id)!;
+    console.warn(`[WARN] Test ${id} is running...`);
+    const process = test.process;
+    console.warn(`[WARN] Killing pid ${process?.pid}...`);
+    const killed = process?.kill;
+    console.warn(killed ? `[WARN] Test ${id} was cancelled.` : `Failed to kill test ${id} (pid: ${process?.pid}).`);
   }
 
   private _writeMetadata(run: TestRun) {
-    const metadata = path.join(this._config.baseFolder, run.id, metadataName);
+    const metadata = path.join(this._config.tempFolder, run.id, metadataName);
     this._write(metadata, JSON.stringify(run));
   }
 
@@ -92,11 +117,20 @@ export class Controller {
     fs.writeFileSync(fullPathName, data, { encoding: 'utf8', flush: true });
   }
 
+  private _moveToResults(id: string) {
+    const tempPath = path.join(this._config.tempFolder, id);
+    const testPath = path.join(this._config.testFolder, id);
+
+    fs.cpSync(tempPath, testPath, { preserveTimestamps: true, recursive: true });
+    fs.rmSync(tempPath, { recursive: true });
+  }
+
   constructor(private _config: ControllerConfig) {
+    const defaultLabels = ['category', 'name'];
     this._testDuration = new Gauge({
       name: 'jmeter_test_duration',
       help: 'jmeter test duration (in seconds)',
-      labelNames: [...this._config.customLabels, 'category', 'name'],
+      labelNames: this._config.customLabels.length ? [...this._config.customLabels, ...defaultLabels] : defaultLabels,
     });
     _config.register.registerMetric(this._testDuration);
   }
@@ -105,27 +139,20 @@ export class Controller {
     return Object.values(this._testsById).filter(x => x.run.status == TestRunStatus.running).length;
   }
 
-  public async importTestRuns() {
-    const folders = await this._getSubDirectories(this._config.baseFolder);
-    folders.forEach(id => {
-      const metadata = path.join(this._config.baseFolder, id, metadataName);
-      if (fs.existsSync(metadata)) {
-        const fd = fs.openSync(metadata, 'r');
-        try {
-          const content = fs.readFileSync(fd, { encoding: 'utf8' });
-          const run = JSON.parse(content);
-          this._upsertTest({ run: run, process: undefined } as Test);
-        } finally {
-          fs.closeSync(fd);
-        }
-      }
-    })
-    this._cancelRunningTests();
+  public async importTestsAndRuns() {
+    const runs = await this._getSubDirectories(this._config.tempFolder);
+    runs.forEach(id => this._moveToResults(id));
+
+    const tests = await this._getSubDirectories(this._config.testFolder);
+    tests.forEach(id => this._importTest(id));
   }
 
   public async exportTestRuns() {
-    this._cancelRunningTests();
-    this._tests.forEach(test => this._writeMetadata(test.run));
+    const runs = await this._getSubDirectories(this._config.tempFolder);
+    runs.forEach(id => {
+      this._cancelTest(id);
+      this._exportRun(id);
+    });
   }
 
   public testExists(id: string): boolean {
@@ -138,38 +165,34 @@ export class Controller {
   }
 
   public deleteTest(id: string) {
-    const testRunData = path.join(this._config.baseFolder, id);
-    const logFile = path.join(this._config.logFolder, `${id}.log`);
+    const testData = path.join(this._config.testFolder, id);
+    const runData = path.join(this._config.tempFolder, id);
 
     const exists = this.testExists(id);
     if (exists) {
       if (this.testRunning(id)) {
-        console.warn(`[WARN] Test ${id} is running...`);
-        const process = this._testsById[id]?.process;
-        console.warn(`[WARN] Killing pid ${process?.pid}...`);
-        const killed = process?.kill;
-        console.warn(killed ? `[WARN] Test ${id} was cancelled.` : `Failed to kill test ${id} (pid: ${process?.pid}).`);
+        this._cancelTest(id);
       }
       delete this._testsById[id];
     } else {
-      console.warn(`[WARN] Test ${id} does not exist (in memory DB) but trying to remove test data (${testRunData}) and log file (${logFile}).`);
+      console.warn(`[WARN] Test ${id} does not exist (in memory DB) but trying to remove test data (${testData}).`);
     }
 
-    const testDataExists = fs.existsSync(testRunData);
+    const testDataExists = fs.existsSync(testData);
     if (testDataExists) {
-      if (!this._config.silent) console.info(`[INFO] Deleting test data at ${testRunData}...`);
-      fs.rmSync(testRunData, { recursive: true, force: true });
-      console.warn(`[WARN] Deleted test data at ${testRunData}.`);
+      if (!this._config.silent) console.info(`[INFO] Deleting test data at ${testData}...`);
+      fs.rmSync(testData, { recursive: true, force: true });
+      console.warn(`[WARN] Deleted test data at ${testData}.`);
     }
 
-    const logFileExists = fs.existsSync(logFile);
-    if (logFileExists) {
-      if (!this._config.silent) console.info(`[INFO] Deleting log file at ${logFile}...`);
-      fs.rmSync(logFile);
-      console.warn(`[WARN] Deleted log file at ${logFile}.`);
+    const runDataExists = fs.existsSync(runData);
+    if (testDataExists) {
+      if (!this._config.silent) console.info(`[INFO] Deleting test run data at ${runData}...`);
+      fs.rmSync(runData, { recursive: true, force: true });
+      console.warn(`[WARN] Deleted test run data at ${runData}.`);
     }
 
-    return exists || testDataExists || logFileExists;
+    return exists || testDataExists || runDataExists;
   }
 
   public deleteAllTestRuns() {
@@ -180,7 +203,7 @@ export class Controller {
     const test = this._getTest(id);
     if (!test) throw new Error(`Test ${id} does not exist.`);
 
-    const logs = path.join(this._config.logFolder, `${id}.log`);
+    const logs = path.join(this._config.tempFolder, id, outputName);
     const output = limit ? await read(logs, limit) : this._read(logs);
     const data = {
       ...test.run,
@@ -203,9 +226,9 @@ export class Controller {
       .map(test => {
         switch (test.status) {
           case TestRunStatus.done:
-            return { ...test, link: `${this._config.baseUrl}/${test.id}/results/`, text: 'results' };
+            return { ...test, link: `${this._config.baseUrl}/test/${test.id}/results/`, text: 'results' };
           case TestRunStatus.cancelled:
-            return { ...test, link: `${this._config.baseUrl}/${test.id}`, text: 'output' };
+            return { ...test, link: `${this._config.baseUrl}/test/${test.id}/jmeter.log`, text: 'output' };
           case TestRunStatus.running:
             return { ...test, link: `${this._config.baseUrl}/${test.id}`, text: 'status' };
           default:
@@ -229,7 +252,7 @@ export class Controller {
 
   public async scheduleTestRun(body: string, category: string | undefined) {
     const id = uuidv4();
-    const folder = path.join(this._config.baseFolder, id);
+    const folder = path.join(this._config.tempFolder, id);
     fs.mkdirSync(folder);
 
     await fsp.writeFile(path.join(folder, testName), body);
@@ -239,12 +262,12 @@ export class Controller {
     const args = parsed.jmeterTestPlan.hashTree.hashTree.Arguments;
     const elements = Array.isArray(args) && args?.find(x => x._testname === 'Labels')?.collectionProp?.elementProp;
     const labels = Array.isArray(elements) && elements
-      .map(x => ({ 
-        key: x._name, 
-        value: Array.isArray(x.stringProp) 
+      .map(x => ({
+        key: x._name,
+        value: Array.isArray(x.stringProp)
           ? x.stringProp.find(s => s._name === 'Argument.value')?._text
           : (x.stringProp._name === 'Argument.value' ? x.stringProp._text : undefined)
-        }))
+      }))
       .reduce<Labels>((a, x) => (a[x.key] = x.value?.toString(), a), {});
 
     const timestamp = new Date().toISOString();
@@ -266,17 +289,19 @@ export class Controller {
       try {
         const duration = endTimer && endTimer({ ...labels, category: run.category, name: run.name });
         const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code, duration: duration }, process: jmeter } as Test;
-        this._writeMetadata(this._upsertTest(updatedTest).run);
+        const updatedRun = this._upsertTest(updatedTest).run;
+        this._writeMetadata(updatedRun);
+        this._moveToResults(updatedRun.id);
       } catch (error) {
         console.error('Failed to write metadata because: ', error);
       }
     });
 
-    const logs = path.join(this._config.logFolder, `${id}.log`);
+    const logs = path.join(folder, outputName);
     jmeter.stdout.pipe(fs.createWriteStream(logs, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
 
     const statusUrl = `${this._config.baseUrl}/${id}`;
-    const resultsUrl = `${statusUrl}/results/`;
+    const resultsUrl = `${this._config.baseUrl}/test/${id}/results`;
     return { id: id, status: statusUrl, results: resultsUrl };
   }
 

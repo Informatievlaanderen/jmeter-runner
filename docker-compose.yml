@@ -11,12 +11,14 @@ services:
     networks:
       - performance_testing 
     volumes:
-      - ${TEST_FOLDER}:/home/node/jmeter-runner/tests:rw
+      - ${TEST_FOLDER:-./tests}:/home/node/jmeter-runner/tests:rw
+      - ${TEMP_FOLDER:-./temp}:/home/node/jmeter-runner/temp:rw
     ports:
       - 9000:80
     environment:
-      # - TEST_FOLDER_BASE=/home/node/jmeter-runner/tests
-      - BASE_URL=${BASE_URL}
+      - TEST_FOLDER_BASE=/home/node/jmeter-runner/tests
+      - TEMP_FOLDER_BASE=/home/node/jmeter-runner/temp
+      - BASE_URL=${BASE_URL:-http://localhost:9000}
       - SILENT=${SILENT:-false}
       - MAX_RUNNING=${MAX_RUNNING:-1}
       - REFRESH_TIME=${REFRESH_TIME:-30}
