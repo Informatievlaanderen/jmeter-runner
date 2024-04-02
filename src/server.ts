@@ -4,7 +4,7 @@ import minimist from 'minimist'
 import fs from 'node:fs';
 import { Registry, collectDefaultMetrics } from 'prom-client';
 
-import { Controller, metadataName } from './controller';
+import { Controller } from './controller';
 import { ControllerConfig } from './interfaces';
 
 const megabyte = 1048576;
@@ -38,38 +38,37 @@ const apiKeyRunTest = args['run-test-api-key'] || '';
 const apiKeyCheckTest = args['check-test-api-key'] || '';
 const apiKeyDeleteTest = args['delete-test-api-key'] || '';
 const refreshTimeInSeconds = args['refresh-time'] || 30;
-const labels: string = args['custom-labels'];
+const labels: string = args['custom-labels'] || undefined;
 const customLabels = labels?.split(' ') || [];
 
 const testFolderBase = args['test-folder-base'] || './tests';
-const baseFolder = fs.realpathSync(testFolderBase);
-if (!fs.existsSync(baseFolder)) {
-  fs.mkdirSync(baseFolder);
+const testFolder = fs.realpathSync(testFolderBase);
+if (!fs.existsSync(testFolder)) {
+  fs.mkdirSync(testFolder);
 }
-console.info("Storing data in: ", baseFolder);
+console.info("Storing test data (test, logs, results, etc) in: ", testFolder);
 
-let logFolder = './logs';
-if (!fs.existsSync(logFolder)) {
-  fs.mkdirSync(logFolder);
+const tempFolderBase = args['temp-folder-base'] || './temp';
+const tempFolder = fs.realpathSync(tempFolderBase);
+if (!fs.existsSync(tempFolder)) {
+  fs.mkdirSync(tempFolder);
 }
-logFolder = fs.realpathSync(logFolder);
-console.info("Storing logs in: ", logFolder);
+console.info("Storing temporary data (during test run) in: ", tempFolder);
 
-const controller = new Controller({ baseFolder, baseUrl, refreshTimeInSeconds, logFolder, silent, register, customLabels } as ControllerConfig);
+const controller = new Controller({ testFolder, tempFolder, baseUrl, refreshTimeInSeconds, silent, register, customLabels } as ControllerConfig);
 
 function checkApiKey(request: any, apiKey: string): boolean {
   return !apiKey || request.headers['x-api-key'] === apiKey;
 }
 
 server.register(fastifyStatic, {
-  root: baseFolder,
-  prefix: '/',
-  allowedPath: (pathName) => !pathName.endsWith(metadataName)
+  root: testFolder,
+  prefix: '/test'
 });
 
 server.addHook('onReady', async () => {
   try {
-    await controller.importTestRuns();
+    await controller.importTestsAndRuns();
   } catch (error) {
     console.error('Failed to import metadata because: ', error);
   }
@@ -111,10 +110,10 @@ server.post('/', { schema: { querystring: { category: { type: 'string' } } } }, 
     const parameters = request.query as { category?: string };
     const body = request.body as string;
     const response = await controller.scheduleTestRun(body, parameters.category);
-    reply.status(201).send(response);
+    return reply.status(201).send(response);
   } catch (error: any) {
     console.error('[ERROR] ', error);
-    reply.status(500);
+    return reply.status(500);
   }
 });
 
@@ -126,9 +125,9 @@ server.get('/', async (request, reply) => {
 
   try {
     const body = controller.getTestRunsOverview();
-    reply.header('content-type', 'text/html').send(body);
+    return reply.header('content-type', 'text/html').send(body);
   } catch (error) {
-    reply.send({ msg: 'Cannot display test runs overview\n', error: error });
+    return reply.send({ msg: 'Cannot display test runs overview\n', error: error });
   }
 });
 
@@ -143,16 +142,16 @@ server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, a
   try {
     if (controller.testExists(id)) {
       const body = await controller.getTestRunStatus(id, parameters.limit);
-      reply.header('content-type', 'text/html').send(body);
+      return reply.header('content-type', 'text/html').send(body);
     } else {
-      reply.status(404).send('');
+      return reply.status(404).send('');
     }
   } catch (error) {
-    reply.send({ msg: `Cannot display status for test run ${id}\n`, error: error });
+    return reply.send({ msg: `Cannot display status for test run ${id}\n`, error: error });
   }
 });
 
-server.delete('/', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
+server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
     return reply.status(401).send('');
   }
@@ -161,17 +160,17 @@ server.delete('/', { schema: { querystring: { confirm: { type: 'boolean' } } } }
 
   try {
     if (controller.runningCount > 0 && !parameters.confirm) {
-      reply.status(405).send("Cannot delete all tests as some are still running.\nHint:pass query parameter '?confirm=true'.\n");
+      return reply.status(405).send("Cannot delete all tests as some are still running.\nHint:pass query parameter '?confirm=true'.\n");
     } else {
       controller.deleteAllTestRuns();
-      reply.send('All tests deleted\n');
+      return reply.send('All tests deleted\n');
     }
   } catch (error) {
-    reply.send({ msg: 'Cannot delete all tests\n', error: error });
+    return reply.send({ msg: 'Cannot delete all tests\n', error: error });
   }
 });
 
-server.delete('/:id', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
+server.delete('/test/:id', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
     return reply.status(401).send('');
   }
@@ -181,17 +180,17 @@ server.delete('/:id', { schema: { querystring: { confirm: { type: 'boolean' } } 
 
   try {
     if (controller.testRunning(id) && !parameters.confirm) {
-      reply.status(405).send(`Test ${id} is still running.\nHint:pass query parameter '?confirm=true'.\n`);
+      return reply.status(405).send(`Test ${id} is still running.\nHint:pass query parameter '?confirm=true'.\n`);
     } else {
       const deleted = controller.deleteTest(id);
       if (deleted) {
-        reply.send(`Test ${id} deleted\n`);
+        return reply.send(`Test ${id} deleted\n`);
       } else {
-        reply.status(404).send(`Test ${id} not found\n`);
+        return reply.status(404).send(`Test ${id} not found\n`);
       }
     }
   } catch (error) {
-    reply.send({ msg: `Cannot delete test ${id}\n`, error: error });
+    return reply.send({ msg: `Cannot delete test ${id}\n`, error: error });
   }
 });
 

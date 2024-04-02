@@ -16,7 +16,7 @@ docker build --tag vsds/jmeter-runner .
 
 To run the jmeter runner Docker image mapped on port 9000 and storing the test data on the host system, you can use:
 ```bash
-docker run -d -p 9000:80 -v ./tests:/home/node/jmeter-runner/tests:rw -e BASE_URL=http://localhost:9000 vsds/jmeter-runner
+docker run -d -p 9000:80 -v ./tests:/home/node/jmeter-runner/tests:rw -v ./temp:/home/node/jmeter-runner/temp:rw -e BASE_URL=http://localhost:9000 vsds/jmeter-runner
 ```
 
 The Docker run command will return a container ID (e.g. `e2267325aad52663fef226aad49e729acc92f2f3936bec47a354d015e47c33d6`), which you need to stop the container.
@@ -48,10 +48,13 @@ The jmeter runner uses the file system as permanent storage to allow for keeping
 ```bash
 mkdir -p ./tests
 chmod 0777 ./tests
+mkdir -p ./temp
+chmod 0777 ./temp
 ```
 
 The jmeter runner takes the following command line arguments:
-* `--test-folder-base` the base directory to store all test related data, defaults to `./tests`
+* `--test-folder-base` the test directory to store all test related (result) data, defaults to `./tests`
+* `--temp-folder-base` the temp directory to store test run data, defaults to `./temp`
 * `--base-url` sets the 'external' base URL, used to refer to a test status and the test results, default to the host and port (using scheme HTTP, e.g. http://localhost:80)
 * `--silent=<true|false>` prevents any console debug output if true, defaults to false (not silent, logging all debug info)
 * `--port=<port-number>` allows to set the port, defaults to `80`
@@ -61,6 +64,7 @@ The jmeter runner takes the following command line arguments:
 * `--run-test-api-key` the API key to protect the run test endpoint, defaults to no API key checking
 * `--check-test-api-key` the API key to protect the test status and results endpoints, defaults to no API key checking
 * `--delete-test-api-key` the API key to protect the delete test endpoint, defaults to no API key checking
+* `--custom-labels` collection of custom labels (separated by a blank) for prometheus, defaults to ``
 
 > **Note** that you can pass these API keys using the header `x-api-key`.
 
@@ -121,20 +125,35 @@ or if you want to display everything, you need to add a zero limit:
 curl http://localhost:9000/c47a3487-2f9f-433c-ab5a-82b196fff7e1?limit=0
 ```
 
-### `GET /<test-run-id>/results` -- Get Test Run Results
+### `GET /test/<test-run-id>/results` -- Get Test Run Results
 Returns a HTML page with the results for the test run with the given ID.
 ```bash
-curl "http://localhost:9000/c47a3487-2f9f-433c-ab5a-82b196fff7e1/results"
+curl "http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1/results"
+```
+> **Note** that you can also get the `jmeter.log` and related files (`test.jmx`, `report.jtl`, etc.), e.g.
+```bash
+curl "http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1/jmeter.log"
 ```
 
-### `DELETE /<test-run-id>` -- Remove Test Run
+### `DELETE /test/<test-run-id>` -- Remove Test Run
 Removes the test run with the given ID and its related data including resuls, so use with caution.
 ```bash
-curl -X DELETE http://localhost:9000/c47a3487-2f9f-433c-ab5a-82b196fff7e1
+curl -X DELETE http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1
+```
+> **Note** that if the test is still running, you need to confirm the deletion by adding `?confirm=true`, e.g.
+```bash
+curl -X DELETE http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1?confirm=true
 ```
 
 ### `DELETE /` -- Remove All Test Runs
 Removes all tests and their related data including resuls, so use with extreme caution.
 ```bash
-curl -X DELETE http://localhost:9000/
+curl -X DELETE http://localhost:9000/test
 ```
+> **Note** that if a test is still running, you need to confirm the deletion by adding `?confirm=true`, e.g.
+```bash
+curl -X DELETE http://localhost:9000/test?confirm=true
+```
+
+### `GET /prometheus` -- Get Metrics
+Exposes the metrics using [Prometheus](https://prometheus.io/) format.

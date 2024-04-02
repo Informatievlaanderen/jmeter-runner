@@ -49,9 +49,9 @@ export interface TestRun {
 }
 
 export interface ControllerConfig {
-  baseFolder: string,
+  testFolder: string,
+  tempFolder: string,
   baseUrl: string,
-  logFolder: string,
   refreshTimeInSeconds: number,
   silent: boolean,
   register: Registry<PrometheusContentType>,
