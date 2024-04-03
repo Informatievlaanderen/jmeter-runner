@@ -101,7 +101,7 @@ export class Controller {
     console.warn(`[WARN] Killing pid ${process?.pid}...`);
     const killed = process?.kill;
     console.warn(killed ? `[WARN] Test ${id} was cancelled.` : `Failed to kill test ${id} (pid: ${process?.pid}).`);
-    return this._upsertTest({run: {...test.run, status: TestRunStatus.cancelled} as TestRun, process: undefined} as Test);
+    return this._upsertTest({ run: { ...test.run, status: TestRunStatus.cancelled } as TestRun, process: undefined } as Test);
   }
 
   private _writeMetadata(run: TestRun) {
@@ -121,7 +121,7 @@ export class Controller {
     const tempPath = path.join(this._config.tempFolder, id);
     const testPath = path.join(this._config.testFolder, id);
 
-    fs.cpSync(tempPath, testPath, { preserveTimestamps: true, recursive: true });
+    fs.cpSync(tempPath, testPath, { recursive: true });
     fs.rmSync(tempPath, { recursive: true });
   }
 
