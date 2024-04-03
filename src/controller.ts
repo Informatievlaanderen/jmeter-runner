@@ -89,19 +89,19 @@ export class Controller {
     }
   }
 
-  private _exportRun(id: string) {
-    const run = this._getTest(id)!.run;
-    this._writeMetadata({ ...run, status: TestRunStatus.cancelled });
-    this._moveToResults(id);
+  private _exportTestRun(run: TestRun) {
+    this._writeMetadata(run);
+    this._moveToResults(run.id);
   }
 
-  private _cancelTest(id: string) {
-    const test = this._getTest(id)!;
+  private _cancelTest(test: Test) {
+    const id = test.run.id;
     console.warn(`[WARN] Test ${id} is running...`);
     const process = test.process;
     console.warn(`[WARN] Killing pid ${process?.pid}...`);
     const killed = process?.kill;
     console.warn(killed ? `[WARN] Test ${id} was cancelled.` : `Failed to kill test ${id} (pid: ${process?.pid}).`);
+    return this._upsertTest({run: {...test.run, status: TestRunStatus.cancelled} as TestRun, process: undefined} as Test);
   }
 
   private _writeMetadata(run: TestRun) {
@@ -149,10 +149,7 @@ export class Controller {
 
   public async exportTestRuns() {
     const runs = await this._getSubDirectories(this._config.tempFolder);
-    runs.forEach(id => {
-      this._cancelTest(id);
-      this._exportRun(id);
-    });
+    runs.forEach(id => this.cancelTest(id));
   }
 
   public testExists(id: string): boolean {
@@ -164,6 +161,13 @@ export class Controller {
     return !!test && test.run.status === TestRunStatus.running;
   }
 
+  public cancelTest(id: string) {
+    const test = this._getTest(id);
+    if (test) {
+      this._exportTestRun(this._cancelTest(test).run);
+    }
+  }
+
   public deleteTest(id: string) {
     const testData = path.join(this._config.testFolder, id);
     const runData = path.join(this._config.tempFolder, id);
@@ -171,7 +175,8 @@ export class Controller {
     const exists = this.testExists(id);
     if (exists) {
       if (this.testRunning(id)) {
-        this._cancelTest(id);
+        const test = this._getTest(id)!;
+        this._cancelTest(test);
       }
       delete this._testsById[id];
     } else {
@@ -195,8 +200,16 @@ export class Controller {
     return exists || testDataExists || runDataExists;
   }
 
-  public deleteAllTestRuns() {
+  public deleteAllTests() {
     this._tests.map(x => this.deleteTest(x.run.id));
+  }
+
+  public cancelAllRunningTests() {
+    this._tests.map(x => {
+      if (x.process && !x.process.exitCode) {
+        this.cancelTest(x.run.id)
+      }
+    });
   }
 
   public async getTestRunStatus(id: string, limit: number = 1000) {

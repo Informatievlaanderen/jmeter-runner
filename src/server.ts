@@ -157,14 +157,23 @@ server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } }
   }
 
   const parameters = request.query as { confirm?: boolean };
+  const cancelOnly = !parameters.confirm;
 
   try {
-    if (controller.runningCount > 0 && !parameters.confirm) {
-      return reply.status(405).send("Cannot delete all tests as some are still running.\nHint:pass query parameter '?confirm=true'.\n");
-    } else {
-      controller.deleteAllTestRuns();
+    const anyTestRunning = controller.runningCount > 0;
+    if (anyTestRunning) {
+      controller.cancelAllRunningTests();
+    }
+
+    if (!cancelOnly) {
+      controller.deleteAllTests();
       return reply.send('All tests deleted\n');
     }
+
+    return anyTestRunning
+      ? reply.send('All running tests cancelled\n')
+      : reply.status(405).send("No tests cancelled nor deleted.\nHint:pass query parameter '?confirm=true' to actually delete all tests.\n");
+
   } catch (error) {
     return reply.send({ msg: 'Cannot delete all tests\n', error: error });
   }
@@ -177,18 +186,21 @@ server.delete('/test/:id', { schema: { querystring: { confirm: { type: 'boolean'
 
   const { id } = request.params as { id: string };
   const parameters = request.query as { confirm?: boolean };
+  const cancelOnly = !parameters.confirm;
 
   try {
-    if (controller.testRunning(id) && !parameters.confirm) {
-      return reply.status(405).send(`Test ${id} is still running.\nHint:pass query parameter '?confirm=true'.\n`);
-    } else {
-      const deleted = controller.deleteTest(id);
-      if (deleted) {
-        return reply.send(`Test ${id} deleted\n`);
-      } else {
-        return reply.status(404).send(`Test ${id} not found\n`);
-      }
+    if (controller.testRunning(id)) {
+      controller.cancelTest(id);
     }
+
+    if (cancelOnly) {
+      return reply.send(`Test ${id} cancelled\n`);
+    }
+
+    return controller.deleteTest(id)
+      ? reply.send(`Test ${id} deleted\n`)
+      : reply.status(404).send(`Test ${id} not found\n`);
+
   } catch (error) {
     return reply.send({ msg: `Cannot delete test ${id}\n`, error: error });
   }
