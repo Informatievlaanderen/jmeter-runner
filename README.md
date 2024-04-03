@@ -135,24 +135,25 @@ curl "http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1/results"
 curl "http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1/jmeter.log"
 ```
 
-### `DELETE /test/<test-run-id>` -- Remove Test Run
-Removes the test run with the given ID and its related data including resuls, so use with caution.
-```bash
-curl -X DELETE http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1
-```
-> **Note** that if the test is still running, you need to confirm the deletion by adding `?confirm=true`, e.g.
+### `DELETE /test/<test-run-id>[?confirm=true]` -- Cancel Test Run or Remove Test And Results
+If confirmed (`?confirm=true`), removes the test run with the given ID and its related data including results, so use with caution. If a test is running it is first cancelled. E.g.:
 ```bash
 curl -X DELETE http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1?confirm=true
 ```
 
-### `DELETE /` -- Remove All Test Runs
-Removes all tests and their related data including resuls, so use with extreme caution.
+If not confirmed, a running test is simply cancelled. E.g.:
 ```bash
-curl -X DELETE http://localhost:9000/test
+curl -X DELETE http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1
 ```
-> **Note** that if a test is still running, you need to confirm the deletion by adding `?confirm=true`, e.g.
+### `DELETE /test[?confirm=true]` -- Cancel All Test Runs or Delete All Tests
+If confirmed (`?confirm=true`), removes all tests and their related data including results, so use with extreme caution. All running tests are cancelled before deletion. E.g.:
 ```bash
 curl -X DELETE http://localhost:9000/test?confirm=true
+```
+
+If not confirmed, all running tests are simply cancelled. E.g.
+```bash
+curl -X DELETE http://localhost:9000/test
 ```
 
 ### `GET /prometheus` -- Get Metrics
