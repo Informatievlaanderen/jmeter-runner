@@ -298,15 +298,19 @@ export class Controller {
 
     this._writeMetadata(test.run);
 
-    jmeter.on('close', (code) => {
+    jmeter.on('close', (code, signal) => {
       try {
-        const duration = endTimer && endTimer({ ...labels, category: run.category, name: run.name });
-        const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code, duration: duration }, process: jmeter } as Test;
-        const updatedRun = this._upsertTest(updatedTest).run;
-        this._writeMetadata(updatedRun);
-        this._moveToResults(updatedRun.id);
+        if (!!signal) {
+          console.info(`[WARN] Ignoring process exit code '${code}' for test ${id} because received signal ${signal}`);
+        } else {
+          const duration = endTimer && endTimer({ ...labels, category: run.category, name: run.name });
+          const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code, duration: duration }, process: jmeter } as Test;
+          const updatedRun = this._upsertTest(updatedTest).run;
+          this._writeMetadata(updatedRun);
+          this._moveToResults(updatedRun.id);
+        }
       } catch (error) {
-        console.error('Failed to write metadata because: ', error);
+        console.error('[ERROR] Failed to write metadata because: ', error);
       }
     });
 

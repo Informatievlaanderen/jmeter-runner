@@ -70,7 +70,7 @@ server.addHook('onReady', async () => {
   try {
     await controller.importTestsAndRuns();
   } catch (error) {
-    console.error('Failed to import metadata because: ', error);
+    console.error('[ERROR] Failed to import metadata because: ', error);
   }
 });
 
@@ -78,7 +78,7 @@ server.addHook('onClose', async () => {
   try {
     await controller.exportTestRuns();
   } catch (error) {
-    console.error('Failed to export metadata because: ', error);
+    console.error('[ERROR] Failed to export metadata because: ', error);
   }
 })
 
