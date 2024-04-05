@@ -121,8 +121,21 @@ export class Controller {
     const tempPath = path.join(this._config.tempFolder, id);
     const testPath = path.join(this._config.testFolder, id);
 
-    fs.cpSync(tempPath, testPath, { recursive: true });
-    fs.rmSync(tempPath, { recursive: true });
+    // NOTE: 
+    //   node.js uses chmod to cp the permissions for each file & folder to the destination,
+    //   however this is not permitted on a S3 bucket destination. 
+    // fs.cpSync(tempPath, testPath, { recursive: true });
+    // fs.rmSync(tempPath, { recursive: true });
+    const cmd = `cp -r ${tempPath} ${testPath} && rm -rf ${tempPath}`;
+    cp.exec(cmd, (error: cp.ExecException | null, stdout: string, stderr: string) => {
+      if (error) {
+        console.error(`[ERROR] failed to move test ${id}, please move manually`);
+      } else if (stderr) {
+          console.warn(`[WARN] something went wrong while moving test ${id}: ${stderr}`);
+      } else if (stderr) {
+          console.info(`[INFO] moved test ${id}: ${stdout}`);
+      }
+    })
   }
 
   constructor(private _config: ControllerConfig) {
