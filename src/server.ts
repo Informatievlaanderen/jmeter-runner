@@ -127,7 +127,7 @@ server.get('/', async (request, reply) => {
     const body = controller.getTestRunsOverview();
     return reply.header('content-type', 'text/html').send(body);
   } catch (error) {
-    return reply.send({ msg: 'Cannot display test runs overview\n', error: error });
+    return reply.status(500).send({ msg: 'Cannot display test runs overview\n', error: error });
   }
 });
 
@@ -147,7 +147,7 @@ server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, a
       return reply.status(404).send('');
     }
   } catch (error) {
-    return reply.send({ msg: `Cannot display status for test run ${id}\n`, error: error });
+    return reply.status(500).send({ msg: `Cannot display status for test run ${id}\n`, error: error });
   }
 });
 
@@ -175,7 +175,7 @@ server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } }
       : reply.status(405).send("No tests cancelled nor deleted.\nHint:pass query parameter '?confirm=true' to actually delete all tests.\n");
 
   } catch (error) {
-    return reply.send({ msg: 'Cannot delete all tests\n', error: error });
+    return reply.status(500).send({ msg: 'Cannot delete all tests\n', error: error });
   }
 });
 
@@ -202,7 +202,7 @@ server.delete('/test/:id', { schema: { querystring: { confirm: { type: 'boolean'
       : reply.status(404).send(`Test ${id} not found\n`);
 
   } catch (error) {
-    return reply.send({ msg: `Cannot delete test ${id}\n`, error: error });
+    return reply.status(500).send({ msg: `Cannot delete test ${id}\n`, error: error });
   }
 });
 
