@@ -174,6 +174,11 @@ export class Controller {
     return !!test && test.run.status === TestRunStatus.running;
   }
 
+  public testStatus(id: string): TestRunStatus | undefined {
+    const test = this._getTest(id);
+    return test && test.run.status;
+  }
+
   public cancelTest(id: string) {
     const test = this._getTest(id);
     if (test) {

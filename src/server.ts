@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { Registry, collectDefaultMetrics } from 'prom-client';
 
 import { Controller } from './controller';
-import { ControllerConfig } from './interfaces';
+import { ControllerConfig, TestRunStatus } from './interfaces';
 
 const megabyte = 1048576;
 const server = fastify({ bodyLimit: 10 * megabyte });
@@ -140,11 +140,17 @@ server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, a
   const { id } = request.params as { id: string };
 
   try {
-    if (controller.testExists(id)) {
-      const body = await controller.getTestRunStatus(id, parameters.limit);
-      return reply.header('content-type', 'text/html').send(body);
-    } else {
-      return reply.status(404).send('');
+    switch (controller.testStatus(id)) {
+      case TestRunStatus.running: {
+        const body = await controller.getTestRunStatus(id, parameters.limit);
+        return reply.header('content-type', 'text/html').send(body);
+      }
+      case TestRunStatus.cancelled:
+        return reply.redirect(`/test/${id}/jmeter.log`);
+      case TestRunStatus.done:
+        return reply.redirect(`/test/${id}/results/`);
+      default:
+        return reply.status(404).send('');
     }
   } catch (error) {
     return reply.status(500).send({ msg: `Cannot display status for test run ${id}\n`, error: error });
