@@ -319,16 +319,22 @@ export class Controller {
     jmeter.on('close', (code, signal) => {
       try {
         if (!!signal) {
-          console.info(`[WARN] Ignoring process exit code '${code}' for test ${id} because received signal ${signal}`);
+          console.warn(`[WARN] Ignoring process exit code '${code}' for test ${id} because received signal ${signal}`);
         } else {
-          const duration = endTimer && endTimer({ ...labels, category: run.category, name: run.name });
+          let duration: number | undefined; 
+          try {
+            duration = endTimer && endTimer({ ...labels, category: run.category, name: run.name });
+          } catch (error) {
+            console.warn(`[WARN] Cannot calculate duration for test ${id} because: ${error}`);
+            duration = undefined;
+          }
           const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code, duration: duration }, process: jmeter } as Test;
           const updatedRun = this._upsertTest(updatedTest).run;
           this._writeMetadata(updatedRun);
           this._moveToResults(updatedRun.id);
         }
       } catch (error) {
-        console.error('[ERROR] Failed to write metadata because: ', error);
+        console.error(`[ERROR] Failed to write metadata because: ${error}`);
       }
     });
 
