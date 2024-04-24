@@ -26,8 +26,18 @@ const noTestsFoundTemplate = '<!DOCTYPE html><html>\
   <body>No tests found.</body></html>';
 
 const overviewTemplate = '<!DOCTYPE html><html>\
-  <head><title>Test Runs Overview</title><meta http-equiv="refresh" content="{{refresh}}"></head>\
+  <head><title>Test Runs Overview</title><meta http-equiv="refresh" content="{{refresh}}">\
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>\
+  <script type="text/javascript">function reload(){ location.reload(); }</script>\
+  <script type="text/javascript">function cancelTest(id, headers){ $.ajax({ type: "DELETE", url: "/test/" + id, headers: headers, success: reload}); }</script>\
+  </head>\
   <body><h1>Test Runs</h1>\
+  <p><strong>Status</strong>: {{status}}{{#action}} <input id="action" type="button" value="{{label}}" onclick="{{onClick}}"/>{{/action}}</p>\
+  {{#current}}\
+    <p><strong>Category</strong>: {{category}}</p>\
+    <p><strong>Test</strong>: {{name}}</p>\
+    <p><strong>Started at</strong>: {{timestamp}}, see <a href="{{link}}" target="_blank">{{text}}</a></p>\
+  {{/current}}\
   {{#tests}}<h2>Category: {{category}}</h2>\
     {{#group}}<h3>Test: {{name}}</h3><ul>\
       {{#group}}\
@@ -49,11 +59,26 @@ interface TestRunDatabase {
 
 type Labels = { [x in string]: string | undefined };
 
+enum ControllerStatus {
+  idle = 'IDLE',
+  running = 'RUNNING',
+} 
+
 export class Controller {
 
+  private _status: ControllerStatus = ControllerStatus.idle;
   private _testsById: TestRunDatabase = {};
   private _testParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '_', textNodeName: '_text' });
   private _testDuration?: Gauge;
+
+  private get status() {
+    return this._status;
+  }
+
+  private set status(status: ControllerStatus) {
+    console.debug(`[DEBUG] setting controller status to ${status}`);
+    this._status = status;
+  }
 
   private get _tests() {
     return Object.values(this._testsById);
@@ -99,7 +124,7 @@ export class Controller {
     console.warn(`[WARN] Test ${id} is running...`);
     const process = test.process;
     console.warn(`[WARN] Killing pid ${process?.pid}...`);
-    const killed = process?.kill;
+    const killed = process?.kill();
     console.warn(killed ? `[WARN] Test ${id} was cancelled.` : `Failed to kill test ${id} (pid: ${process?.pid}).`);
     return this._upsertTest({ run: { ...test.run, status: TestRunStatus.cancelled } as TestRun, process: undefined } as Test);
   }
@@ -261,11 +286,12 @@ export class Controller {
           case TestRunStatus.cancelled:
             return { ...test, link: `${this._config.baseUrl}/test/${test.id}/jmeter.log`, text: 'output' };
           case TestRunStatus.running:
-            return { ...test, link: `${this._config.baseUrl}/${test.id}`, text: 'status' };
+            return null;
           default:
             throw new Error(`Unknown test status: `, test.status);
         }
-      });
+      })
+      .filter(x => x !== null);
 
     const runsGroupedByCategory = _.groupBy(runs, (run: { category?: string }) => run.category);
     const runsByCategoryAndName = _.keys(runsGroupedByCategory).map(x => {
@@ -274,7 +300,11 @@ export class Controller {
       return { category: x, group: categoryByName };
     });
 
+    const current = tests.find(x => x.run.status === TestRunStatus.running)?.run;
     const data = {
+      status: this.status,
+      current: current ? { ...current, link: `${this._config.baseUrl}/${current.id}`, text: 'status' } : undefined,
+      action: current ? { label: 'Cancel', onClick: `cancelTest('${current.id}', {'x-api-key':'${this._config.keys.deleteTest}'})` } : undefined,
       refresh: this._config.refreshTimeInSeconds,
       tests: runsByCategoryAndName,
     };
@@ -315,6 +345,7 @@ export class Controller {
     const test = this._upsertTest({ run: run, process: jmeter } as Test);
 
     this._writeMetadata(test.run);
+    this.status = ControllerStatus.running;
 
     jmeter.on('close', (code, signal) => {
       try {
@@ -335,6 +366,8 @@ export class Controller {
         }
       } catch (error) {
         console.error(`[ERROR] Failed to write metadata because: ${error}`);
+      } finally {
+        this.status = ControllerStatus.idle;
       }
     });
 

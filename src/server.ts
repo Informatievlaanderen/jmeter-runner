@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { Registry, collectDefaultMetrics } from 'prom-client';
 
 import { Controller } from './controller';
-import { ControllerConfig, TestRunStatus } from './interfaces';
+import { AuthKeys, ControllerConfig, TestRunStatus } from './interfaces';
 
 const megabyte = 1048576;
 const server = fastify({ bodyLimit: 10 * megabyte });
@@ -19,7 +19,7 @@ collectDefaultMetrics({
 });
 
 server.get('/prometheus', async (_, reply) => {
-  reply.header('Content-Type', register.contentType).send(await register.metrics());
+  reply.header('content-type', register.contentType).send(await register.metrics());
 });
 
 
@@ -54,7 +54,8 @@ if (!fs.existsSync(tempFolder)) {
 }
 console.info("Storing temporary data (during test run) in: ", tempFolder);
 
-const controller = new Controller({ testFolder, tempFolder, baseUrl, refreshTimeInSeconds, silent, register, customLabels } as ControllerConfig);
+const authKeys: AuthKeys = { runTest: apiKeyRunTest, checkTest: apiKeyCheckTest, deleteTest: apiKeyDeleteTest };
+const controller = new Controller({ testFolder, tempFolder, baseUrl, refreshTimeInSeconds, silent, register, customLabels, keys:authKeys } as ControllerConfig);
 
 function checkApiKey(request: any, apiKey: string): boolean {
   return !apiKey || request.headers['x-api-key'] === apiKey;
@@ -96,7 +97,7 @@ server.addContentTypeParser(['application/xml'], { parseAs: 'string' }, function
 
 server.post('/', { schema: { querystring: { category: { type: 'string' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyRunTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
   }
 
   try {
@@ -113,20 +114,20 @@ server.post('/', { schema: { querystring: { category: { type: 'string' } } } }, 
 
 server.get('/', async (request, reply) => {
   if (!checkApiKey(request, apiKeyCheckTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
   }
 
   try {
     const body = controller.getTestRunsOverview();
     return reply.header('content-type', 'text/html').send(body);
   } catch (error) {
-    return reply.status(500).send({ msg: 'Cannot display test runs overview\n', error: error });
+    return reply.status(500).header('content-type', 'text/plain').send({ msg: 'Cannot display test runs overview\n', error: error });
   }
 });
 
 server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyCheckTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
   }
 
   const parameters = request.query as { limit?: number };
@@ -143,16 +144,16 @@ server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, a
       case TestRunStatus.done:
         return reply.redirect(`/test/${id}/results/`);
       default:
-        return reply.status(404).send('');
+        return reply.status(404);
     }
   } catch (error) {
-    return reply.status(500).send({ msg: `Cannot display status for test run ${id}\n`, error: error });
+    return reply.status(500).header('content-type', 'text/plain').send({ msg: `Cannot display status for test run ${id}\n`, error: error });
   }
 });
 
 server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
   }
 
   const parameters = request.query as { confirm?: boolean };
@@ -166,21 +167,21 @@ server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } }
 
     if (!cancelOnly) {
       controller.deleteAllTests();
-      return reply.send('All tests deleted\n');
+      return reply.header('content-type', 'text/plain').send('All tests deleted\n');
     }
 
     return anyTestRunning
-      ? reply.send('All running tests cancelled\n')
-      : reply.status(405).send("No tests cancelled nor deleted.\nHint:pass query parameter '?confirm=true' to actually delete all tests.\n");
+      ? reply.header('content-type', 'text/plain').send('All running tests cancelled\n')
+      : reply.status(405).header('content-type', 'text/plain').send("No tests cancelled nor deleted.\nHint:pass query parameter '?confirm=true' to actually delete all tests.\n");
 
   } catch (error) {
-    return reply.status(500).send({ msg: 'Cannot delete all tests\n', error: error });
+    return reply.status(500).header('content-type', 'text/plain').send({ msg: 'Cannot delete all tests\n', error: error });
   }
 });
 
 server.delete('/test/:id', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
   }
 
   const { id } = request.params as { id: string };
@@ -193,15 +194,15 @@ server.delete('/test/:id', { schema: { querystring: { confirm: { type: 'boolean'
     }
 
     if (cancelOnly) {
-      return reply.send(`Test ${id} cancelled\n`);
+      return reply.header('content-type', 'text/plain').send(`Test ${id} cancelled\n`);
     }
 
     return controller.deleteTest(id)
-      ? reply.send(`Test ${id} deleted\n`)
-      : reply.status(404).send(`Test ${id} not found\n`);
+      ? reply.header('content-type', 'text/plain').send(`Test ${id} deleted\n`)
+      : reply.status(404).header('content-type', 'text/plain').send(`Test ${id} not found\n`);
 
   } catch (error) {
-    return reply.status(500).send({ msg: `Cannot delete test ${id}\n`, error: error });
+    return reply.status(500).header('content-type', 'text/plain').send({ msg: `Cannot delete test ${id}\n`, error: error });
   }
 });
 

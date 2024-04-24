@@ -48,6 +48,12 @@ export interface TestRun {
   duration: number | undefined;
 }
 
+export interface AuthKeys {
+  runTest: string,
+  checkTest: string,
+  deleteTest: string,
+}
+
 export interface ControllerConfig {
   testFolder: string,
   tempFolder: string,
@@ -56,4 +62,5 @@ export interface ControllerConfig {
   silent: boolean,
   register: Registry<PrometheusContentType>,
   customLabels: string[],
+  keys: AuthKeys,
 }
