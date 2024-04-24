@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { Registry, collectDefaultMetrics } from 'prom-client';
 
 import { Controller } from './controller';
-import { ControllerConfig, TestRunStatus } from './interfaces';
+import { AuthKeys, ControllerConfig, TestRunStatus } from './interfaces';
 
 const megabyte = 1048576;
 const server = fastify({ bodyLimit: 10 * megabyte });
@@ -19,7 +19,7 @@ collectDefaultMetrics({
 });
 
 server.get('/prometheus', async (_, reply) => {
-  reply.header('Content-Type', register.contentType).send(await register.metrics());
+  reply.header('content-type', register.contentType).send(await register.metrics());
 });
 
 
@@ -33,13 +33,15 @@ const port = args['port'] || 80;
 const host = args['host'] || 'localhost';
 const baseUrl = args['base-url'] || `http://${host}:${port}`;
 
-const maxRunning = args['max-running'] || 1;
 const apiKeyRunTest = args['run-test-api-key'] || '';
 const apiKeyCheckTest = args['check-test-api-key'] || '';
 const apiKeyDeleteTest = args['delete-test-api-key'] || '';
 const refreshTimeInSeconds = args['refresh-time'] || 30;
 const labels: string = args['custom-labels'] || undefined;
 const customLabels = labels?.split(' ') || [];
+
+const cwd = fs.realpathSync('.');
+console.info("Current working directory: ", cwd);
 
 const testFolderBase = args['test-folder-base'] || './tests';
 const testFolder = fs.realpathSync(testFolderBase);
@@ -55,7 +57,8 @@ if (!fs.existsSync(tempFolder)) {
 }
 console.info("Storing temporary data (during test run) in: ", tempFolder);
 
-const controller = new Controller({ testFolder, tempFolder, baseUrl, refreshTimeInSeconds, silent, register, customLabels } as ControllerConfig);
+const authKeys: AuthKeys = { runTest: apiKeyRunTest, checkTest: apiKeyCheckTest, deleteTest: apiKeyDeleteTest };
+const controller = new Controller({ cwd, testFolder, tempFolder, baseUrl, refreshTimeInSeconds, silent, register, customLabels, keys:authKeys } as ControllerConfig);
 
 function checkApiKey(request: any, apiKey: string): boolean {
   return !apiKey || request.headers['x-api-key'] === apiKey;
@@ -66,21 +69,9 @@ server.register(fastifyStatic, {
   prefix: '/test'
 });
 
-server.addHook('onReady', async () => {
-  try {
-    await controller.importTestsAndRuns();
-  } catch (error) {
-    console.error('[ERROR] Failed to import metadata because: ', error);
-  }
-});
+server.addHook('onReady', async () => controller.initialize());
 
-server.addHook('onClose', async () => {
-  try {
-    await controller.exportTestRuns();
-  } catch (error) {
-    console.error('[ERROR] Failed to export metadata because: ', error);
-  }
-})
+server.addHook('onClose', async () => controller.terminate());
 
 server.addHook('onResponse', (request, reply, done) => {
   if (!silent) {
@@ -95,18 +86,26 @@ server.addContentTypeParser(['application/xml'], { parseAs: 'string' }, function
   done(null, body);
 })
 
-server.post('/', { schema: { querystring: { category: { type: 'string' } } } }, async (request, reply) => {
+server.post('/status/resume', (request, reply) => {
   if (!checkApiKey(request, apiKeyRunTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
+  }
+
+  try  {
+    return reply.send(controller.resume());
+  } catch (error: any) {
+    console.error('[ERROR] ', error);
+    return reply.status(500);
+  }
+});
+
+
+server.post('/test', { schema: { querystring: { category: { type: 'string' } } } }, async (request, reply) => {
+  if (!checkApiKey(request, apiKeyRunTest)) {
+    return reply.status(401);
   }
 
   try {
-    if (controller.runningCount >= maxRunning) {
-      return reply.status(503)
-        .header('content-type', 'text/plain')
-        .send(`Cannot start new test run as the maximum (${maxRunning}) simultaneous tests runs are currently running. Try again later.\n`);
-    }
-
     const parameters = request.query as { category?: string };
     const body = request.body as string;
     const response = await controller.scheduleTestRun(body, parameters.category);
@@ -117,23 +116,30 @@ server.post('/', { schema: { querystring: { category: { type: 'string' } } } }, 
   }
 });
 
+server.get('/', (_, reply) => reply.redirect(302, '/test'));
 
-server.get('/', async (request, reply) => {
+server.get('/test', async (request, reply) => {
   if (!checkApiKey(request, apiKeyCheckTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
   }
 
   try {
     const body = controller.getTestRunsOverview();
     return reply.header('content-type', 'text/html').send(body);
   } catch (error) {
-    return reply.status(500).send({ msg: 'Cannot display test runs overview\n', error: error });
+    return reply.status(500).header('content-type', 'text/plain').send({ msg: 'Cannot display test runs overview\n', error: error });
   }
 });
 
-server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, async (request, reply) => {
+server.get('/:id', (request, reply) => {
+  const parameters = request.query as { limit?: number };
+  const { id } = request.params as { id: string };
+  reply.redirect(302, parameters.limit !== undefined ? `/test/${id}?limit=${parameters.limit}` : `/test/${id}`);
+});
+
+server.get('/test/:id', { schema: { querystring: { limit: { type: 'number' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyCheckTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
   }
 
   const parameters = request.query as { limit?: number };
@@ -150,16 +156,17 @@ server.get('/:id', { schema: { querystring: { limit: { type: 'number' } } } }, a
       case TestRunStatus.done:
         return reply.redirect(`/test/${id}/results/`);
       default:
-        return reply.status(404).send('');
+        return reply.status(404);
     }
   } catch (error) {
-    return reply.status(500).send({ msg: `Cannot display status for test run ${id}\n`, error: error });
+    return reply.status(500).header('content-type', 'text/plain').send({ msg: `Cannot display status for test run ${id}\n`, error: error });
   }
 });
 
+
 server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
   }
 
   const parameters = request.query as { confirm?: boolean };
@@ -173,21 +180,22 @@ server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } }
 
     if (!cancelOnly) {
       controller.deleteAllTests();
-      return reply.send('All tests deleted\n');
+      return reply.header('content-type', 'text/plain').send('All tests deleted\n');
     }
 
     return anyTestRunning
-      ? reply.send('All running tests cancelled\n')
-      : reply.status(405).send("No tests cancelled nor deleted.\nHint:pass query parameter '?confirm=true' to actually delete all tests.\n");
+      ? reply.header('content-type', 'text/plain').send('All running tests cancelled\n')
+      : reply.status(405).header('content-type', 'text/plain').send("No tests cancelled nor deleted.\nHint:pass query parameter '?confirm=true' to actually delete all tests.\n");
 
   } catch (error) {
-    return reply.status(500).send({ msg: 'Cannot delete all tests\n', error: error });
+    return reply.status(500).header('content-type', 'text/plain').send({ msg: 'Cannot delete all tests\n', error: error });
   }
 });
 
+
 server.delete('/test/:id', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
-    return reply.status(401).send('');
+    return reply.status(401);
   }
 
   const { id } = request.params as { id: string };
@@ -200,17 +208,18 @@ server.delete('/test/:id', { schema: { querystring: { confirm: { type: 'boolean'
     }
 
     if (cancelOnly) {
-      return reply.send(`Test ${id} cancelled\n`);
+      return reply.header('content-type', 'text/plain').send(`Test ${id} cancelled\n`);
     }
 
     return controller.deleteTest(id)
-      ? reply.send(`Test ${id} deleted\n`)
-      : reply.status(404).send(`Test ${id} not found\n`);
+      ? reply.header('content-type', 'text/plain').send(`Test ${id} deleted\n`)
+      : reply.status(404).header('content-type', 'text/plain').send(`Test ${id} not found\n`);
 
   } catch (error) {
-    return reply.status(500).send({ msg: `Cannot delete test ${id}\n`, error: error });
+    return reply.status(500).header('content-type', 'text/plain').send({ msg: `Cannot delete test ${id}\n`, error: error });
   }
 });
+
 
 async function closeGracefully(signal: any) {
   console.info(`Received signal: `, signal);

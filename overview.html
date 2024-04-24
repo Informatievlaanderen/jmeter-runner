@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Test Runs Overview</title>
+  <meta http-equiv="refresh" content="{{refresh}}">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"
+    integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+  <script type="text/javascript">
+    function reload() { location.reload(); }
+    function cancelTest(id, headers) { $.ajax({ type: "DELETE", url: "/test/" + id, headers: headers, success: reload }); }
+    function resume(headers) { $.ajax({ type: "POST", url: "/status/resume", headers: headers, success: reload }); }
+  </script>
+</head>
+
+<body>
+  <h1>Test Runner</h1>
+  <p><strong>Status</strong>: {{status}}{{#action}} <input id="action" type="button" value="{{label}}"
+      onclick="{{onClick}}" />{{/action}}</p>
+  <h2>Queued Tests</h2>
+  {{^queued}}
+  <p>No queued tests found.</p>
+  {{/queued}}
+  <ul>
+    {{#queued}}
+    <li>{{name}} (queued at: {{timestamp}}, category: {{category}})</li>
+    {{/queued}}
+  </ul>
+  <h2>Running Test</h2>
+  {{^current}}
+  <p>No test running.</p>
+  {{/current}}
+  {{#current}}
+  <p>
+    <strong>Test</strong>: {{name}}</br>
+    <strong>Started at</strong>: {{timestamp}}, see <a href="{{link}}" target="_blank">{{text}}</a></br>
+    <strong>Category</strong>: {{category}}
+  </p>
+  {{/current}}
+  <h2>Completed Tests</h2>
+  {{^tests}}
+  <p>No completed tests found.</p>
+  {{/tests}}
+  {{#tests}}
+  <h3>Category: {{category}}</h3>
+  {{#group}}<h4>Test: {{name}}</h4>
+  <ul>
+    {{#group}}
+    <li>Test run started at {{timestamp}}: {{status}}, see <a href="{{link}}" target="_blank">{{text}}</a></li>
+    {{/group}}
+  </ul>
+  {{/group}}
+  {{/tests}}
+</body>
+
+</html>

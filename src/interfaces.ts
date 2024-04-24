@@ -36,6 +36,7 @@ export enum TestRunStatus {
   running = 'running',
   done = 'done',
   cancelled = 'cancelled',
+  queued = 'queued',
 }
 
 export interface TestRun {
@@ -48,7 +49,14 @@ export interface TestRun {
   duration: number | undefined;
 }
 
+export interface AuthKeys {
+  runTest: string,
+  checkTest: string,
+  deleteTest: string,
+}
+
 export interface ControllerConfig {
+  cwd: string,
   testFolder: string,
   tempFolder: string,
   baseUrl: string,
@@ -56,4 +64,5 @@ export interface ControllerConfig {
   silent: boolean,
   register: Registry<PrometheusContentType>,
   customLabels: string[],
+  keys: AuthKeys,
 }

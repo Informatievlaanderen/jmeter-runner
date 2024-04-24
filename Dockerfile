@@ -1,7 +1,7 @@
 # build environment
 FROM node:20-bullseye-slim AS builder
 # fix vulnerabilities
-ARG NPM_TAG=9.9.2
+ARG NPM_TAG=10.5.2
 RUN npm install -g npm@${NPM_TAG}
 # build it
 WORKDIR /build
@@ -26,13 +26,13 @@ RUN mkdir -p jmeter-runner/tests
 RUN mkdir -p jmeter-runner/temp
 COPY --chown=node:node --from=builder /build/package*.json jmeter-runner/
 COPY --chown=node:node --from=builder /build/dist/*.js jmeter-runner/
+COPY --chown=node:node --from=builder /build/*.html jmeter-runner/
 RUN cd ./jmeter-runner && npm ci --omit=dev
 ENV BASE_URL=
 ENV PORT=
 ENV TEST_FOLDER_BASE=
 ENV TEMP_FOLDER_BASE=
 ENV SILENT=
-ENV MAX_RUNNING=
 ENV REFRESH_TIME=
 ENV RUN_TEST_API_KEY=
 ENV CHECK_TEST_API_KEY=
@@ -60,4 +60,4 @@ RUN echo "jmeter.reportgenerator.temp_dir=/tmp/jmeter" >> /home/node/apache-jmet
 RUN chown node:node -R /home/node/*
 WORKDIR /home/node/jmeter-runner
 USER node
-CMD ["sh", "-c", "node ./server.js --host=0.0.0.0 --port=${PORT} --base-url=${BASE_URL} --test-folder-base=${TEST_FOLDER_BASE} --temp-folder-base=${TEMP_FOLDER_BASE} --silent=${SILENT} --max-running=${MAX_RUNNING} --refresh-time=${REFRESH_TIME} --run-test-api-key=${RUN_TEST_API_KEY} --check-test-api-key=${CHECK_TEST_API_KEY} --delete-test-api-key=${DELETE_TEST_API_KEY} --custom-labels=\"${CUSTOM_LABELS}\""]
+CMD ["sh", "-c", "node ./server.js --host=0.0.0.0 --port=${PORT} --base-url=${BASE_URL} --test-folder-base=${TEST_FOLDER_BASE} --temp-folder-base=${TEMP_FOLDER_BASE} --silent=${SILENT} --refresh-time=${REFRESH_TIME} --run-test-api-key=${RUN_TEST_API_KEY} --check-test-api-key=${CHECK_TEST_API_KEY} --delete-test-api-key=${DELETE_TEST_API_KEY} --custom-labels=\"${CUSTOM_LABELS}\""]
