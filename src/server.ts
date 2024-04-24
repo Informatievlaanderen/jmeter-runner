@@ -33,7 +33,6 @@ const port = args['port'] || 80;
 const host = args['host'] || 'localhost';
 const baseUrl = args['base-url'] || `http://${host}:${port}`;
 
-const maxRunning = args['max-running'] || 1;
 const apiKeyRunTest = args['run-test-api-key'] || '';
 const apiKeyCheckTest = args['check-test-api-key'] || '';
 const apiKeyDeleteTest = args['delete-test-api-key'] || '';
@@ -101,12 +100,6 @@ server.post('/', { schema: { querystring: { category: { type: 'string' } } } }, 
   }
 
   try {
-    if (controller.runningCount >= maxRunning) {
-      return reply.status(503)
-        .header('content-type', 'text/plain')
-        .send(`Cannot start new test run as the maximum (${maxRunning}) simultaneous tests runs are currently running. Try again later.\n`);
-    }
-
     const parameters = request.query as { category?: string };
     const body = request.body as string;
     const response = await controller.scheduleTestRun(body, parameters.category);

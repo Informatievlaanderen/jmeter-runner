@@ -57,7 +57,6 @@ The jmeter runner takes the following command line arguments:
 * `--silent=<true|false>` prevents any console debug output if true, defaults to false (not silent, logging all debug info)
 * `--port=<port-number>` allows to set the port, defaults to `80`
 * `--host=<host-name>` allows to set the hostname, defaults to `localhost`
-* `--max-running` allows to set the maximum number of simultenaously running tests, defaults to `1`
 * `--refresh-time` allows to change the status and overview page refresh time in seconds, defaults to `30`
 * `--run-test-api-key` the API key to protect the run test endpoint, defaults to no API key checking
 * `--check-test-api-key` the API key to protect the test status and results endpoints, defaults to no API key checking
