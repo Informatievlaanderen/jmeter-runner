@@ -20,7 +20,6 @@ services:
       - TEMP_FOLDER_BASE=/home/node/jmeter-runner/temp
       - BASE_URL=${BASE_URL:-http://localhost:9000}
       - SILENT=${SILENT:-false}
-      - MAX_RUNNING=${MAX_RUNNING:-1}
       - REFRESH_TIME=${REFRESH_TIME:-30}
       - RUN_TEST_API_KEY=${RUN_TEST_API_KEY:-}
       - CHECK_TEST_API_KEY=${CHECK_TEST_API_KEY:-}

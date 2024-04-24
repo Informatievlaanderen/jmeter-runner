@@ -78,13 +78,18 @@ Test runner listening at http://127.0.0.1:9000
 ## Usage
 The jmeter runner accepts the following REST calls.
 
-### `GET /` -- Get Test Runs Overview
-Returns a HTML page listing the test runs per test and per category, e.g.
+### `GET /test` -- Get Test Runs Overview
+Returns a HTML page displaying the queued tests (if any), the currently running test (if any) and the completed test runs per test and per category, e.g.
 ```bash
-curl http://localhost:9000/
+curl http://localhost:9000/test
 ```
 
-### `POST /` -- Start Test Run
+> **Note** that you can cancel a running test on this page. Also see [Cancel a Test Run](#delete-testtest-run-idconfirmtrue----cancel-test-run-or-remove-test-and-results).
+
+
+> **Note** that after cancelling a test you may need to cleanup your system being tested and therefore the jmeter runner will pause running (queued) tests until you [Resume the Runner](#post-statusresume----resume-the-runner-if-paused).
+
+### `POST /test` -- Start Test Run
 > **Note** that before running the jmeter [example test](./example.jmx) you will need to install an HTTP server (once) and serve the test page (in a separate bash shell):
 ```bash
 npm install --global http-server
@@ -94,33 +99,35 @@ http-server ./example -p 8080
 
 Initiates a jmeter test (mime-type: `application/xml`) and returns the test ID as well as a URL to the status page and the results page, e.g.
 ```bash
-curl -X POST http://localhost:9000/ -H "Content-Type: application/xml" --data "@./example.jmx"
+curl -X POST http://localhost:9000/test -H "Content-Type: application/xml" --data "@./example.jmx"
 ```
-returns:
+returns something like:
 ```json
-{"id":"c47a3487-2f9f-433c-ab5a-82b196fff7e1","status":"http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1","results":"http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1/results/"}
+{"id":"c47a3487-2f9f-433c-ab5a-82b196fff7e1"}
 ```
 
 > **Note** that the results page will only exist after the test has completed and the status page allows you to follow the test progress and is automatically refreshed (see `--refresh-time`).
 
 > **Note** that the jmeter runner extracts the test name from the jmeter test and uses it to group together all the test runs for the same test name. In addition, you can pass a category to allow grouping tests according to this category by appending a category name in the query string. E.g.:
 ```bash
-curl -X POST http://localhost:9000/?category=Examples -H "Content-Type: application/xml" --data "@./example.jmx"
+curl -X POST http://localhost:9000/test?category=Examples -H "Content-Type: application/xml" --data "@./example.jmx"
 ```
 
-### `GET /<test-run-id>` -- Get Test Run Status
+### `GET /test/<test-run-id>` -- Get Test Run Status
 Returns a HTML page (auto-refreshed) with the status for the test run with the given ID.
 ```bash
-curl http://localhost:9000/c47a3487-2f9f-433c-ab5a-82b196fff7e1
+curl http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1
 ```
 > **Note** that the jmeter runner only displays the last 1000 lines by default. If you need to see more or less lines you can specify a `limit` as a query parameter. E.g.:
 ```bash
-curl http://localhost:9000/c47a3487-2f9f-433c-ab5a-82b196fff7e1?limit=100
+curl http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1?limit=100
 ```
 or if you want to display everything, you need to add a zero limit:
 ```bash
-curl http://localhost:9000/c47a3487-2f9f-433c-ab5a-82b196fff7e1?limit=0
+curl http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1?limit=0
 ```
+
+> **Note** that the jmeter runner will automatically redirect if the test is done to either the results (test completed) or the `jmeter.log` file (test cancelled).
 
 ### `GET /test/<test-run-id>/results` -- Get Test Run Results
 Returns a HTML page with the results for the test run with the given ID.
@@ -137,6 +144,8 @@ If confirmed (`?confirm=true`), removes the test run with the given ID and its r
 ```bash
 curl -X DELETE http://localhost:9000/test/c47a3487-2f9f-433c-ab5a-82b196fff7e1?confirm=true
 ```
+
+> **Note** that you can also cancel a running test by clicking the `Cancel` button on [the test overview page](#get-test----get-test-runs-overview) next to the running test.
 
 If not confirmed, a running test is simply cancelled. E.g.:
 ```bash
@@ -155,3 +164,9 @@ curl -X DELETE http://localhost:9000/test
 
 ### `GET /prometheus` -- Get Metrics
 Exposes the metrics using [Prometheus](https://prometheus.io/) format.
+
+### `POST /status/resume` -- Resume the Runner if Paused
+When you [Cancel a Test](#delete-testtest-run-idconfirmtrue----cancel-test-run-or-remove-test-and-results) you need to verify and if needed clean the state of your system under test (SUT). Therefore the jmeter runner will pause processing new tests by queue new test requests until you confirm that it should resume. E.g. :
+```bash
+curl -X POST http://localhost:9000/status/resume
+```

@@ -16,37 +16,8 @@ const testName = 'test.jmx';
 const reportName = 'report.jtl';
 const outputName = 'output.log';
 const resultsFolder = 'results';
-
-const statusTemplate = '<!DOCTYPE html><html>\
-  <head><title>Test Run {{id}}</title>{{#refresh}}<meta http-equiv="refresh" content="{{.}}">{{/refresh}}</head>\
-  <body><h1>Category: {{category}} - Test: {{name}}</h1>Test run started at {{timestamp}}<hr/><pre>{{output}}</pre></body></html>';
-
-const noTestsFoundTemplate = '<!DOCTYPE html><html>\
-  <head><title>Tests Overview</title><meta http-equiv="refresh" content="{{refresh}}"></head>\
-  <body>No tests found.</body></html>';
-
-const overviewTemplate = '<!DOCTYPE html><html>\
-  <head><title>Test Runs Overview</title><meta http-equiv="refresh" content="{{refresh}}">\
-  <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>\
-  <script type="text/javascript">function reload(){ location.reload(); }</script>\
-  <script type="text/javascript">function cancelTest(id, headers){ $.ajax({ type: "DELETE", url: "/test/" + id, headers: headers, success: reload}); }</script>\
-  </head>\
-  <body><h1>Test Runs</h1>\
-  <p><strong>Status</strong>: {{status}}{{#action}} <input id="action" type="button" value="{{label}}" onclick="{{onClick}}"/>{{/action}}</p>\
-  {{#current}}\
-    <p><strong>Category</strong>: {{category}}</p>\
-    <p><strong>Test</strong>: {{name}}</p>\
-    <p><strong>Started at</strong>: {{timestamp}}, see <a href="{{link}}" target="_blank">{{text}}</a></p>\
-  {{/current}}\
-  {{#tests}}<h2>Category: {{category}}</h2>\
-    {{#group}}<h3>Test: {{name}}</h3><ul>\
-      {{#group}}\
-        <li>Test run started at {{timestamp}}: {{status}}, see <a href="{{link}}" target="_blank">{{text}}</a></li>\
-      {{/group}}</ul>\
-    {{/group}}\
-  {{/tests}}\
-  </body></html>';
-
+const statusTemplate = 'status.html';
+const overviewTemplate = 'overview.html';
 
 interface Test {
   run: TestRun;
@@ -62,14 +33,16 @@ type Labels = { [x in string]: string | undefined };
 enum ControllerStatus {
   idle = 'IDLE',
   running = 'RUNNING',
-} 
+  paused = 'PAUSED',
+}
 
 export class Controller {
-
   private _status: ControllerStatus = ControllerStatus.idle;
   private _testsById: TestRunDatabase = {};
   private _testParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '_', textNodeName: '_text' });
   private _testDuration?: Gauge;
+  private _statusTemplate: string | undefined = undefined;
+  private _overviewTemplate: string | undefined = undefined;
 
   private get status() {
     return this._status;
@@ -78,6 +51,14 @@ export class Controller {
   private set status(status: ControllerStatus) {
     console.debug(`[DEBUG] setting controller status to ${status}`);
     this._status = status;
+
+    if (status === ControllerStatus.idle) {
+      const firstQueued = this._testRunsByTimestamp([TestRunStatus.queued]).shift();
+      if (firstQueued) {
+        console.debug(`[DEBUG] running queued test ${firstQueued.id}`);
+        this._runTest(firstQueued);
+      }
+    }
   }
 
   private get _tests() {
@@ -121,12 +102,19 @@ export class Controller {
 
   private _cancelTest(test: Test) {
     const id = test.run.id;
-    console.warn(`[WARN] Test ${id} is running...`);
-    const process = test.process;
-    console.warn(`[WARN] Killing pid ${process?.pid}...`);
-    const killed = process?.kill();
-    console.warn(killed ? `[WARN] Test ${id} was cancelled.` : `Failed to kill test ${id} (pid: ${process?.pid}).`);
-    this.status = ControllerStatus.idle;
+
+    if (test.process) {
+      console.warn(`[WARN] Test ${id} is running...`);
+      const process = test.process;
+      console.warn(`[WARN] Killing pid ${process?.pid}...`);
+      const killed = process?.kill();
+      console.warn(killed ? `[WARN] Test ${id} was cancelled.` : `Failed to kill test ${id} (pid: ${process?.pid}).`);
+
+      // Note: if we kill a process, the system under test (SUT) can be in an invalid state, 
+      //       so pause running tests until SUT back in a consistent state and we are resumed.
+      this.status = ControllerStatus.paused;
+    }
+
     return this._upsertTest({ run: { ...test.run, status: TestRunStatus.cancelled } as TestRun, process: undefined } as Test);
   }
 
@@ -157,11 +145,111 @@ export class Controller {
       if (error) {
         console.error(`[ERROR] failed to move test ${id}, please move manually`);
       } else if (stderr) {
-          console.warn(`[WARN] something went wrong while moving test ${id}: ${stderr}`);
+        console.warn(`[WARN] something went wrong while moving test ${id}: ${stderr}`);
       } else if (stderr) {
-          console.info(`[INFO] moved test ${id}: ${stdout}`);
+        console.info(`[INFO] moved test ${id}: ${stdout}`);
       }
     })
+  }
+
+  private _testRunsByTimestamp(filterByStatus?: TestRunStatus[]) {
+    return this._tests
+      .map(x => x.run)
+      .filter(x => filterByStatus ? filterByStatus.includes(x.status) : true)
+      .sort((f, s) => Date.parse(f.timestamp) - Date.parse(s.timestamp));
+  }
+
+  private async _queueTest(body: string, category: string | undefined): Promise<Test> {
+    const id = uuidv4();
+    const folder = path.join(this._config.tempFolder, id);
+    fs.mkdirSync(folder);
+
+    await fsp.writeFile(path.join(folder, testName), body);
+
+    const parsed = this._testParser.parse(body) as JMeterTest;
+    const testPlan = parsed.jmeterTestPlan.hashTree.TestPlan;
+    const timestamp = new Date().toISOString();
+    const run = {
+      id: id,
+      name: testPlan._testname,
+      category: category,
+      timestamp: timestamp,
+      status: TestRunStatus.queued,
+    } as TestRun;
+    this._writeMetadata(run);
+
+    const test = { run: run, process: undefined } as Test;
+    return this._upsertTest(test);
+  }
+
+  private async _runTest(testRun: TestRun): Promise<void> {
+    const id = testRun.id;
+    const folder = path.join(this._config.tempFolder, id);
+
+    const endTimer = this._testDuration?.startTimer();
+    const timestamp = new Date().toISOString();
+    const jmeter = cp.spawn('jmeter', ['-n', '-t', `${testName}`, '-l', `${reportName}`, '-e', '-o', `${resultsFolder}`], { cwd: folder });
+
+    const run = {
+      ...testRun,
+      timestamp: timestamp,
+      status: TestRunStatus.running
+    } as TestRun;
+    this._writeMetadata(run);
+
+    this._upsertTest({ run: run, process: jmeter } as Test);
+    this.status = ControllerStatus.running;
+
+    const logs = path.join(folder, outputName);
+    jmeter.stdout.pipe(fs.createWriteStream(logs, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
+
+    jmeter.on('close', async (code, signal) => {
+      try {
+        if (!signal) {
+          let duration: number | undefined;
+          try {
+            const body = await fsp.readFile(path.join(folder, testName));
+            const parsed = this._testParser.parse(body) as JMeterTest;
+            const args = parsed.jmeterTestPlan.hashTree.hashTree.Arguments;
+            const elements = Array.isArray(args) && args?.find(x => x._testname === 'Labels')?.collectionProp?.elementProp;
+            const labels = Array.isArray(elements) && elements
+              .map(x => ({
+                key: x._name,
+                value: Array.isArray(x.stringProp)
+                  ? x.stringProp.find(s => s._name === 'Argument.value')?._text
+                  : (x.stringProp._name === 'Argument.value' ? x.stringProp._text : undefined)
+              }))
+              .reduce<Labels>((a, x) => (a[x.key] = x.value?.toString(), a), {});
+            duration = endTimer && endTimer({ ...labels, category: run.category, name: run.name });
+          } catch (error) {
+            console.warn(`[WARN] Cannot calculate duration for test ${id} because: ${error}`);
+            duration = undefined;
+          }
+          const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code, duration: duration }, process: jmeter } as Test;
+          const updatedRun = this._upsertTest(updatedTest).run;
+          this._writeMetadata(updatedRun);
+          this._moveToResults(updatedRun.id);
+          this.status = code === 0 ? ControllerStatus.idle : ControllerStatus.paused;
+        } else {
+          console.warn(`[WARN] received signal ${signal} for test ${id}`);
+        }
+      } catch (error) {
+        console.error(`[ERROR] Failed to write metadata because: ${error}`);
+      }
+    });
+  }
+
+  private async _importTestsAndRuns() {
+    const runs = await this._getSubDirectories(this._config.tempFolder);
+    runs.forEach(id => this._moveToResults(id));
+
+    const tests = await this._getSubDirectories(this._config.testFolder);
+    tests.forEach(id => this._importTest(id));
+  }
+
+  public async _exportTestRuns() {
+    const runs = await this._getSubDirectories(this._config.tempFolder);
+    runs.forEach(id => this.cancelTest(id));
   }
 
   constructor(private _config: ControllerConfig) {
@@ -174,21 +262,28 @@ export class Controller {
     _config.register.registerMetric(this._testDuration);
   }
 
+  public async initialize() {
+    const cwd = this._config.cwd;
+    this._statusTemplate = await fsp.readFile(`${cwd}/${statusTemplate}`, {encoding: 'utf8'});
+    this._overviewTemplate = await fsp.readFile(`${cwd}/${overviewTemplate}`, {encoding: 'utf8'});
+
+    try {
+      await this._importTestsAndRuns();
+    } catch (error) {
+      console.error('[ERROR] Failed to import metadata because: ', error);
+    }
+  }
+
+  public async terminate() {
+    try {
+      await this._exportTestRuns();
+    } catch (error) {
+      console.error('[ERROR] Failed to export metadata because: ', error);
+    }
+  }
+
   public get runningCount(): number {
     return Object.values(this._testsById).filter(x => x.run.status == TestRunStatus.running).length;
-  }
-
-  public async importTestsAndRuns() {
-    const runs = await this._getSubDirectories(this._config.tempFolder);
-    runs.forEach(id => this._moveToResults(id));
-
-    const tests = await this._getSubDirectories(this._config.testFolder);
-    tests.forEach(id => this._importTest(id));
-  }
-
-  public async exportTestRuns() {
-    const runs = await this._getSubDirectories(this._config.tempFolder);
-    runs.forEach(id => this.cancelTest(id));
   }
 
   public testExists(id: string): boolean {
@@ -267,32 +362,16 @@ export class Controller {
       refresh: test.run.status === TestRunStatus.running ? this._config.refreshTimeInSeconds : false,
       output: output,
     };
-    return Mustache.render(statusTemplate, data);
+    return Mustache.render(this._statusTemplate!, data);
   }
 
   public getTestRunsOverview() {
-    const tests = this._tests;
-
-    if (!tests.length) {
-      return Mustache.render(noTestsFoundTemplate, { refresh: this._config.refreshTimeInSeconds });
-    }
-
-    const runs = tests
-      .map(x => x.run)
-      .sort((f, s) => Date.parse(f.timestamp) - Date.parse(s.timestamp))
-      .map(test => {
-        switch (test.status) {
-          case TestRunStatus.done:
-            return { ...test, link: `${this._config.baseUrl}/test/${test.id}/results/`, text: 'results' };
-          case TestRunStatus.cancelled:
-            return { ...test, link: `${this._config.baseUrl}/test/${test.id}/jmeter.log`, text: 'output' };
-          case TestRunStatus.running:
-            return null;
-          default:
-            throw new Error(`Unknown test status: `, test.status);
-        }
-      })
-      .filter(x => x !== null);
+    const runs = this._testRunsByTimestamp([TestRunStatus.done, TestRunStatus.cancelled])
+      .map(run => ({
+        ...run,
+        link: `${this._config.baseUrl}/test/${run.id}/${(run.status === TestRunStatus.done ? 'results/' : 'jmeter.log')}`,
+        text: run.status === TestRunStatus.done ? 'results' : 'output',
+      }));
 
     const runsGroupedByCategory = _.groupBy(runs, (run: { category?: string }) => run.category);
     const runsByCategoryAndName = _.keys(runsGroupedByCategory).map(x => {
@@ -301,82 +380,50 @@ export class Controller {
       return { category: x, group: categoryByName };
     });
 
-    const current = tests.find(x => x.run.status === TestRunStatus.running)?.run;
+    let current = undefined;
+    let action = undefined;
+
+    switch (this.status) {
+      case ControllerStatus.running: {
+        const running = this._tests.find(x => x.run.status === TestRunStatus.running)!.run;
+        action = { label: 'Cancel', onClick: `cancelTest('${running.id}', {'x-api-key':'${this._config.keys.deleteTest}'})` };
+        current = { ...running, link: `${this._config.baseUrl}/test/${running.id}`, text: 'status' };
+        break;
+      }
+      case ControllerStatus.paused: {
+        action = { label: 'Resume', onClick: `resume({'x-api-key':'${this._config.keys.runTest}'})` };
+        break;
+      }
+      case ControllerStatus.idle: break;
+      default: break;
+    }
+
+    const queued = this._testRunsByTimestamp([TestRunStatus.queued]);
+
     const data = {
       status: this.status,
-      current: current ? { ...current, link: `${this._config.baseUrl}/${current.id}`, text: 'status' } : undefined,
-      action: current ? { label: 'Cancel', onClick: `cancelTest('${current.id}', {'x-api-key':'${this._config.keys.deleteTest}'})` } : undefined,
+      queued: queued,
+      current: current,
+      action: action,
       refresh: this._config.refreshTimeInSeconds,
       tests: runsByCategoryAndName,
     };
-    return Mustache.render(overviewTemplate, data);
+    return Mustache.render(this._overviewTemplate!, data);
   }
 
   public async scheduleTestRun(body: string, category: string | undefined) {
-    const id = uuidv4();
-    const folder = path.join(this._config.tempFolder, id);
-    fs.mkdirSync(folder);
+    const test = await this._queueTest(body, category);
 
-    await fsp.writeFile(path.join(folder, testName), body);
+    if (this.status === ControllerStatus.idle) {
+      this._runTest(test.run);
+    }
 
-    const parsed = this._testParser.parse(body) as JMeterTest;
-    const testPlan = parsed.jmeterTestPlan.hashTree.TestPlan;
-    const args = parsed.jmeterTestPlan.hashTree.hashTree.Arguments;
-    const elements = Array.isArray(args) && args?.find(x => x._testname === 'Labels')?.collectionProp?.elementProp;
-    const labels = Array.isArray(elements) && elements
-      .map(x => ({
-        key: x._name,
-        value: Array.isArray(x.stringProp)
-          ? x.stringProp.find(s => s._name === 'Argument.value')?._text
-          : (x.stringProp._name === 'Argument.value' ? x.stringProp._text : undefined)
-      }))
-      .reduce<Labels>((a, x) => (a[x.key] = x.value?.toString(), a), {});
+    return { id: test.run.id };
+  }
 
-    const timestamp = new Date().toISOString();
-    const endTimer = this._testDuration?.startTimer();
-
-    const jmeter = cp.spawn('jmeter', ['-n', '-t', `${testName}`, '-l', `${reportName}`, '-e', '-o', `${resultsFolder}`], { cwd: folder });
-    const run = {
-      id: id,
-      name: testPlan._testname,
-      category: category,
-      timestamp: timestamp,
-      status: TestRunStatus.running
-    } as TestRun;
-    const test = this._upsertTest({ run: run, process: jmeter } as Test);
-
-    this._writeMetadata(test.run);
-    this.status = ControllerStatus.running;
-
-    jmeter.on('close', (code, signal) => {
-      try {
-        if (!signal) {
-          let duration: number | undefined; 
-          try {
-            duration = endTimer && endTimer({ ...labels, category: run.category, name: run.name });
-          } catch (error) {
-            console.warn(`[WARN] Cannot calculate duration for test ${id} because: ${error}`);
-            duration = undefined;
-          }
-          const updatedTest = { run: { ...run, status: TestRunStatus.done, code: code, duration: duration }, process: jmeter } as Test;
-          const updatedRun = this._upsertTest(updatedTest).run;
-          this._writeMetadata(updatedRun);
-          this._moveToResults(updatedRun.id);
-          this.status = ControllerStatus.idle;
-        } else {
-          console.warn(`[WARN] received signal ${signal} for test ${id}`);
-        }
-      } catch (error) {
-        console.error(`[ERROR] Failed to write metadata because: ${error}`);
-      }
-    });
-
-    const logs = path.join(folder, outputName);
-    jmeter.stdout.pipe(fs.createWriteStream(logs, { encoding: 'utf8', flags: 'a', flush: true, autoClose: true, emitClose: false }));
-
-    const statusUrl = `${this._config.baseUrl}/${id}`;
-    const resultsUrl = `${this._config.baseUrl}/test/${id}/results`;
-    return { id: id, status: statusUrl, results: resultsUrl };
+  public resume() {
+    this.status = ControllerStatus.idle;
+    return { status: this.status };
   }
 
 }

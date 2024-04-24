@@ -36,6 +36,7 @@ export enum TestRunStatus {
   running = 'running',
   done = 'done',
   cancelled = 'cancelled',
+  queued = 'queued',
 }
 
 export interface TestRun {
@@ -55,6 +56,7 @@ export interface AuthKeys {
 }
 
 export interface ControllerConfig {
+  cwd: string,
   testFolder: string,
   tempFolder: string,
   baseUrl: string,

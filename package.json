@@ -1,6 +1,6 @@
 {
   "name": "test-runner",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Test runner for jmeter",
   "main": "index.js",
   "scripts": {
