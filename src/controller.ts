@@ -126,6 +126,7 @@ export class Controller {
     console.warn(`[WARN] Killing pid ${process?.pid}...`);
     const killed = process?.kill();
     console.warn(killed ? `[WARN] Test ${id} was cancelled.` : `Failed to kill test ${id} (pid: ${process?.pid}).`);
+    this.status = ControllerStatus.idle;
     return this._upsertTest({ run: { ...test.run, status: TestRunStatus.cancelled } as TestRun, process: undefined } as Test);
   }
 
@@ -349,9 +350,7 @@ export class Controller {
 
     jmeter.on('close', (code, signal) => {
       try {
-        if (!!signal) {
-          console.warn(`[WARN] Ignoring process exit code '${code}' for test ${id} because received signal ${signal}`);
-        } else {
+        if (!signal) {
           let duration: number | undefined; 
           try {
             duration = endTimer && endTimer({ ...labels, category: run.category, name: run.name });
@@ -363,11 +362,12 @@ export class Controller {
           const updatedRun = this._upsertTest(updatedTest).run;
           this._writeMetadata(updatedRun);
           this._moveToResults(updatedRun.id);
+          this.status = ControllerStatus.idle;
+        } else {
+          console.warn(`[WARN] received signal ${signal} for test ${id}`);
         }
       } catch (error) {
         console.error(`[ERROR] Failed to write metadata because: ${error}`);
-      } finally {
-        this.status = ControllerStatus.idle;
       }
     });
 
