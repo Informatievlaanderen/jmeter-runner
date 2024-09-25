@@ -3,7 +3,6 @@
 
 <head>
   <title>Test Runs Overview</title>
-  <meta http-equiv="refresh" content="{{refresh}}">
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"
     integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
   <script type="text/javascript">
@@ -11,6 +10,25 @@
     function cancelTest(id, headers) { $.ajax({ type: "DELETE", url: "/test/" + id, headers: headers, success: reload }); }
     function resume(headers) { $.ajax({ type: "POST", url: "/status/resume", headers: headers, success: reload }); }
   </script>
+  <style>
+    .collapsible {
+      color: rgb(0, 0, 238);
+      cursor: pointer;
+      padding: 0.25rem;
+      width: fit-content;
+      border: none;
+      text-align: left;
+      outline: none;
+    }
+    .active, .collapsible:hover {
+      color: rgb(85, 26, 139);
+    }
+    .content {
+      padding: 0 0.5rem;
+      display: none;
+      overflow: hidden;
+    }
+    </style>
 </head>
 
 <body>
@@ -42,15 +60,40 @@
   <p>No completed tests found.</p>
   {{/tests}}
   {{#tests}}
-  <h3>Category: {{category}}</h3>
-  {{#group}}<h4>Test: {{name}}</h4>
-  <ul>
+  <h3 class="collapsible">{{category}}</h3>
+  <div class="content">
     {{#group}}
-    <li>Test run started at {{timestamp}}: {{status}}, see <a href="{{link}}" target="_blank">{{text}}</a></li>
+    <h4 class="collapsible">Test: {{name}}</h4>
+    <div class="content">
+      <ul>
+        {{#group}}
+        <li>
+          Test run started at {{timestamp}}: {{status}}, see <a href="{{link}}" target="_blank">{{text}}</a>
+          {{#stats}}
+          <span> <a href="{{stats}}" target="_blank">stats</a></span>
+          {{/stats}}
+        </li>
+        {{/group}}
+      </ul>
+    </div>
     {{/group}}
-  </ul>
-  {{/group}}
+  </div>
   {{/tests}}
+  <script>
+    var coll = document.getElementsByClassName("collapsible");
+    var i;
+    for (i = 0; i < coll.length; i++) {
+      coll[i].addEventListener("click", function() {
+        this.classList.toggle("active");
+        var content = this.nextElementSibling;
+        if (content.style.display === "block") {
+          content.style.display = "none";
+        } else {
+          content.style.display = "block";
+        }
+      });
+    }
+  </script>
 </body>
 
 </html>

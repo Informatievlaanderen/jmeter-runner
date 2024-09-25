@@ -371,12 +371,13 @@ export class Controller {
         ...run,
         link: `${baseUrl}/${run.id}/${(run.status === TestRunStatus.done ? 'results/' : 'jmeter.log')}`,
         text: run.status === TestRunStatus.done ? 'results' : 'output',
+        stats: run.status === TestRunStatus.done ? `${baseUrl}/${run.id}/stats.xml` : null,
       }));
 
     const runsGroupedByCategory = _.groupBy(runs, (run: { category?: string }) => run.category);
-    const runsByCategoryAndName = _.keys(runsGroupedByCategory).map(x => {
+    const runsByCategoryAndName = _.orderBy(_.keys(runsGroupedByCategory)).map(x => {
       const categoryGroupedByName = _.groupBy(runsGroupedByCategory[x] || [], (run: { name: string }) => run.name);
-      const categoryByName = _.keys(categoryGroupedByName).map(x => ({ name: x, group: categoryGroupedByName[x] || [] }));
+      const categoryByName = _.orderBy(_.keys(categoryGroupedByName)).map(x => ({ name: x, group: categoryGroupedByName[x] || [] }));
       return { category: x, group: categoryByName };
     });
 
