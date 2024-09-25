@@ -365,11 +365,11 @@ export class Controller {
     return Mustache.render(this._statusTemplate!, data);
   }
 
-  public getTestRunsOverview() {
+  public getTestRunsOverview(baseUrl: string) {
     const runs = this._testRunsByTimestamp([TestRunStatus.done, TestRunStatus.cancelled])
       .map(run => ({
         ...run,
-        link: `${this._config.baseUrl}/test/${run.id}/${(run.status === TestRunStatus.done ? 'results/' : 'jmeter.log')}`,
+        link: `${baseUrl}/${run.id}/${(run.status === TestRunStatus.done ? 'results/' : 'jmeter.log')}`,
         text: run.status === TestRunStatus.done ? 'results' : 'output',
       }));
 
@@ -387,7 +387,7 @@ export class Controller {
       case ControllerStatus.running: {
         const running = this._tests.find(x => x.run.status === TestRunStatus.running)!.run;
         action = { label: 'Cancel', onClick: `cancelTest('${running.id}', {'x-api-key':'${this._config.keys.deleteTest}'})` };
-        current = { ...running, link: `${this._config.baseUrl}/test/${running.id}`, text: 'status' };
+        current = { ...running, link: `${baseUrl}/${running.id}`, text: 'status' };
         break;
       }
       case ControllerStatus.paused: {

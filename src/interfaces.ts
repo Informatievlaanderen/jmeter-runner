@@ -59,7 +59,6 @@ export interface ControllerConfig {
   cwd: string,
   testFolder: string,
   tempFolder: string,
-  baseUrl: string,
   refreshTimeInSeconds: number,
   silent: boolean,
   register: Registry<PrometheusContentType>,

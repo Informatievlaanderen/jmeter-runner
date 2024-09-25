@@ -1,7 +1,7 @@
 # Jmeter Runner
 A small HTTP server to simplify running jmeter tests, follow progress and check the results.
 
-The server needs only minimal configuration. You need to provide a location to store the tests and their results and you need to configure the base URL of the HTTP server.
+The server needs only minimal configuration. You need to provide a location to store the tests and their results.
 
 ## Docker
 The server can be run as a Docker container, after creating a Docker image for it. The Docker container will keep running until stopped.
@@ -14,7 +14,7 @@ docker build --tag vsds/jmeter-runner .
 
 To run the jmeter runner Docker image mapped on port 9000 and storing the test data on the host system, you can use:
 ```bash
-docker run -d -p 9000:80 -v ./tests:/home/node/jmeter-runner/tests:rw -v ./temp:/home/node/jmeter-runner/temp:rw -e BASE_URL=http://localhost:9000 vsds/jmeter-runner
+docker run -d -p 9000:80 -v ./tests:/home/node/jmeter-runner/tests:rw -v ./temp:/home/node/jmeter-runner/temp:rw vsds/jmeter-runner
 ```
 
 The Docker run command will return a container ID (e.g. `e2267325aad52663fef226aad49e729acc92f2f3936bec47a354d015e47c33d6`), which you need to stop the container.
@@ -53,7 +53,6 @@ chmod 0777 ./temp
 The jmeter runner takes the following command line arguments:
 * `--test-folder-base` the test directory to store all test related (result) data, defaults to `./tests`
 * `--temp-folder-base` the temp directory to store test run data, defaults to `./temp`
-* `--base-url` sets the 'external' base URL, used to refer to a test status and the test results, default to the host and port (using scheme HTTP, e.g. http://localhost:80)
 * `--silent=<true|false>` prevents any console debug output if true, defaults to false (not silent, logging all debug info)
 * `--port=<port-number>` allows to set the port, defaults to `80`
 * `--host=<host-name>` allows to set the hostname, defaults to `localhost`

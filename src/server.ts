@@ -31,7 +31,6 @@ if (!silent) {
 
 const port = args['port'] || 80;
 const host = args['host'] || 'localhost';
-const baseUrl = args['base-url'] || `http://${host}:${port}`;
 
 const apiKeyRunTest = args['run-test-api-key'] || '';
 const apiKeyCheckTest = args['check-test-api-key'] || '';
@@ -58,7 +57,7 @@ if (!fs.existsSync(tempFolder)) {
 console.info("Storing temporary data (during test run) in: ", tempFolder);
 
 const authKeys: AuthKeys = { runTest: apiKeyRunTest, checkTest: apiKeyCheckTest, deleteTest: apiKeyDeleteTest };
-const controller = new Controller({ cwd, testFolder, tempFolder, baseUrl, refreshTimeInSeconds, silent, register, customLabels, keys:authKeys } as ControllerConfig);
+const controller = new Controller({ cwd, testFolder, tempFolder, refreshTimeInSeconds, silent, register, customLabels, keys:authKeys } as ControllerConfig);
 
 function checkApiKey(request: any, apiKey: string): boolean {
   return !apiKey || request.headers['x-api-key'] === apiKey;
@@ -123,8 +122,9 @@ server.get('/test', async (request, reply) => {
     return reply.status(401);
   }
 
+  const baseUrl = request.url;
   try {
-    const body = controller.getTestRunsOverview();
+    const body = controller.getTestRunsOverview(baseUrl);
     return reply.header('content-type', 'text/html').send(body);
   } catch (error) {
     return reply.status(500).header('content-type', 'text/plain').send({ msg: 'Cannot display test runs overview\n', error: error });
