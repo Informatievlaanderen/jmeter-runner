@@ -98,8 +98,13 @@ server.post('/status/resume', (request, reply) => {
   }
 });
 
+server.addSchema({
+  $id: 'postTest',
+  type: 'object',
+  properties: { category: { type: 'string' } }
+});
 
-server.post('/test', { schema: { querystring: { category: { type: 'string' } } } }, async (request, reply) => {
+server.post('/test', { schema: { querystring: { $ref: 'postTest#' } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyRunTest)) {
     return reply.status(401);
   }
@@ -115,7 +120,7 @@ server.post('/test', { schema: { querystring: { category: { type: 'string' } } }
   }
 });
 
-server.get('/', (_, reply) => reply.redirect(302, '/test'));
+server.get('/', (_, reply) => reply.redirect('/test'));
 
 server.get('/test', async (request, reply) => {
   if (!checkApiKey(request, apiKeyCheckTest)) {
@@ -134,10 +139,16 @@ server.get('/test', async (request, reply) => {
 server.get('/:id', (request, reply) => {
   const parameters = request.query as { limit?: number };
   const { id } = request.params as { id: string };
-  reply.redirect(302, parameters.limit !== undefined ? `/test/${id}?limit=${parameters.limit}` : `/test/${id}`);
+  reply.redirect(parameters.limit !== undefined ? `/test/${id}?limit=${parameters.limit}` : `/test/${id}`);
 });
 
-server.get('/test/:id', { schema: { querystring: { limit: { type: 'number' } } } }, async (request, reply) => {
+server.addSchema({
+  $id: 'getTest',
+  type: 'object',
+  properties: { limit: { type: 'number' } }
+});
+
+server.get('/test/:id', { schema: { querystring: { $ref: 'getTest#' } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyCheckTest)) {
     return reply.status(401);
   }
@@ -163,8 +174,13 @@ server.get('/test/:id', { schema: { querystring: { limit: { type: 'number' } } }
   }
 });
 
+server.addSchema({
+  $id: 'deleteTest',
+  type: 'object',
+  properties: { confirm: { type: 'boolean' } }
+});
 
-server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
+server.delete('/test', { schema: { querystring: { $ref: 'deleteTest#' } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
     return reply.status(401);
   }
@@ -193,7 +209,7 @@ server.delete('/test', { schema: { querystring: { confirm: { type: 'boolean' } }
 });
 
 
-server.delete('/test/:id', { schema: { querystring: { confirm: { type: 'boolean' } } } }, async (request, reply) => {
+server.delete('/test/:id', { schema: { querystring: { $ref: 'deleteTest#' } } }, async (request, reply) => {
   if (!checkApiKey(request, apiKeyDeleteTest)) {
     return reply.status(401);
   }

@@ -21,4 +21,4 @@ services:
       - RUN_TEST_API_KEY=${RUN_TEST_API_KEY:-}
       - CHECK_TEST_API_KEY=${CHECK_TEST_API_KEY:-}
       - DELETE_TEST_API_KEY=${DELETE_TEST_API_KEY:-}
-      - CUSTOM_LABELS='threads size type component members_per_page'
+      - CUSTOM_LABELS=threads size type component members_per_page test_plan_name views

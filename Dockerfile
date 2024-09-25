@@ -1,7 +1,7 @@
 # build environment
-FROM node:20-bullseye-slim AS builder
+FROM node:22-bullseye-slim AS builder
 # fix vulnerabilities
-ARG NPM_TAG=10.5.2
+ARG NPM_TAG=10.8.3
 RUN npm install -g npm@${NPM_TAG}
 # build it
 WORKDIR /build
@@ -10,7 +10,7 @@ RUN npm ci
 RUN npm run build
 
 # run environment
-FROM node:20.11.0-bullseye-slim
+FROM node:22.9.0-bullseye-slim
 # fix vulnerabilities
 # note: trivy insists this to be on the same RUN line
 RUN apt-get -y update && apt-get -y upgrade
@@ -37,7 +37,7 @@ ENV RUN_TEST_API_KEY=
 ENV CHECK_TEST_API_KEY=
 ENV DELETE_TEST_API_KEY=
 ENV CUSTOM_LABELS=
-ENV NODE_ENV production
+ENV NODE_ENV=production
 EXPOSE 80
 # install java runtime
 ARG JAVA_TAG=17
