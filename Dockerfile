@@ -1,7 +1,7 @@
 # build environment
 FROM node:22-bullseye-slim AS builder
 # fix vulnerabilities
-ARG NPM_TAG=10.8.3
+ARG NPM_TAG=11.0.0
 RUN npm install -g npm@${NPM_TAG}
 # build it
 WORKDIR /build
